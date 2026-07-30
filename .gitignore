@@ -1,0 +1,52 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+__debug_bin*
+
+# Logs and diffs
+*.log
+*.orig
+*.patch
+*.rej
+
+# Go coverage tool output (e.g. LiteIDE)
+*.out
+
+# editor and IDE paraphernalia
+.idea
+.vscode
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Local dev artifacts
+.artifacts
+.artifacts/
+__pycache__
+
+# fulfillment-service
+/fulfillment-service/bin
+/fulfillment-service/dev.yaml
+/fulfillment-service/dist
+/fulfillment-service/fulfillment-service
+/fulfillment-service/logs
+/fulfillment-service/osac
+/fulfillment-service/osac-dev
+
+# osac-operator
+/osac-operator/bin/*
+/osac-operator/main
+/osac-operator/Containerfile.cross
+/osac-operator/Dockerfile.manifests
+/osac-operator/dist/
+/osac-operator/MEMORY.md
+/osac-operator/charts/*/charts/
+/osac-operator/charts/*/Chart.lock
+
+# Kubernetes Generated files - skip generated files, except for vendored files
+!/osac-operator/vendor/**/zz_generated.*
