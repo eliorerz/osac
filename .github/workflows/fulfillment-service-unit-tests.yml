@@ -12,17 +12,18 @@
 # the License.
 #
 
-name: Unit Tests
+name: "fulfillment-service: Unit Tests"
 
 on:
   pull_request:
     branches:
     - main
-    paths-ignore:
-      - 'OWNERS'
-      - 'LICENSE'
-      - '*.md'
-      - 'docs/**'
+    paths:
+      - 'fulfillment-service/**'
+      - '!fulfillment-service/OWNERS'
+      - '!fulfillment-service/LICENSE'
+      - '!fulfillment-service/**/*.md'
+      - '!fulfillment-service/docs/**'
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
@@ -40,5 +41,8 @@ jobs:
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-go
-    - run: |
+      with:
+        working-directory: fulfillment-service
+    - working-directory: fulfillment-service
+      run: |
         ginkgo run --timeout 1h -r internal

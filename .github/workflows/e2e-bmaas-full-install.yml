@@ -1,5 +1,5 @@
 ---
-name: E2E VMaaS Full Install
+name: E2E BMaaS Full Install
 
 permissions:
   contents: read
@@ -7,14 +7,13 @@ permissions:
 on:
   pull_request:
     branches: [main]
-  schedule:
-    - cron: "0 */12 * * *"
+  merge_group:
   workflow_dispatch:
     inputs:
       test-suite:
-        description: "Test suite (vmaas, caas, or empty for all)"
+        description: "Test suite (bmaas, or empty for all)"
         required: false
-        default: "vmaas"
+        default: "bmaas"
       test-filter:
         description: "pytest -k filter"
         required: false
@@ -25,7 +24,7 @@ on:
         default: "main"
 
 concurrency:
-  group: e2e-vmaas-full-install-${{ github.event.pull_request.number || github.run_id }}
+  group: e2e-bmaas-full-install-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -49,35 +48,44 @@ jobs:
               - '!*.md'
               - '!docs/**'
 
-  e2e-vmaas-full-install:
+  # Builds both fulfillment-service and osac-operator from this PR's current
+  # code and installs them together in one cluster -- not one "component
+  # under test" plus a stale pinned image for the other. Runs for any change
+  # touching either component (see `changes` above) rather than being
+  # path-scoped per component; splitting this by component to avoid running
+  # both suites when only one changed is deferred to OSAC-1734 once the
+  # skip-logic pattern from OSAC-3227 is verified.
+  e2e-bmaas-full-install:
     needs: changes
     if: needs.changes.outputs.should-run == 'true'
-    uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@main
+    uses: osac-project/osac-test-infra/.github/workflows/e2e-bmaas-full-install.yml@main
     with:
-      test-suite: ${{ inputs.test-suite || 'vmaas' }}
+      test-suite: ${{ inputs.test-suite || 'bmaas' }}
       test-filter: ${{ inputs.test-filter || '' }}
-      # Build the component image from the PR's fork/branch
       component-repo: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       component-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-      component-image-key: operator.image.repository
-      # Pass author_association for fork PR authorization (empty for non-fork PRs)
+      component-containerfile: fulfillment-service/Containerfile
+      component-image-key: service.images.service
+      component2-repo: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      component2-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      component2-containerfile: osac-operator/Containerfile
+      component2-image-key: operator.image.repository
       fork-pr-author-association: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.author_association || '' }}
       fork-pr-author: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.user.login || '' }}
       pr-number: ${{ github.event.pull_request.number }}
-      # Checkout osac-test-infra for tests/Containerfile (not the caller repo)
       test-infra-repository: osac-project/osac-test-infra
       test-infra-ref: ${{ inputs.test-infra-ref || 'main' }}
 
   e2e:
     if: always()
-    needs: [changes, e2e-vmaas-full-install]
+    needs: [changes, e2e-bmaas-full-install]
     runs-on: ubuntu-latest
     steps:
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: |
           echo "Upstream job results:"
           echo "  changes: ${{ needs.changes.result }}"
-          echo "  e2e-vmaas-full-install: ${{ needs.e2e-vmaas-full-install.result }}"
+          echo "  e2e-bmaas-full-install: ${{ needs.e2e-bmaas-full-install.result }}"
           echo ""
           echo "One or more upstream jobs failed or were cancelled."
           exit 1

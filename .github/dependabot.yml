@@ -1,4 +1,4 @@
-# Set update schedule for GitHub Actions
+# Set update schedule for GitHub Actions, Go modules, and container images
 
 version: 2
 updates:
@@ -7,3 +7,53 @@ updates:
   schedule:
     # Check for updates to GitHub Actions every week
     interval: "weekly"
+
+- package-ecosystem: "gomod"
+  directory: "/fulfillment-service"
+  schedule:
+    # Check for updates to Go modules every week
+    interval: "weekly"
+  groups:
+    fulfillment-service-go-dependencies:
+      patterns:
+        - "*"
+  commit-message:
+    prefix: "NO-ISSUE"
+
+- package-ecosystem: "gomod"
+  directories:
+    - "/osac-operator"
+    - "/osac-operator/api"
+  schedule:
+    # Check for updates to Go modules every week
+    interval: "weekly"
+  groups:
+    osac-operator-go-dependencies:
+      patterns:
+        - "*"
+  commit-message:
+    prefix: "NO-ISSUE"
+
+- package-ecosystem: "docker"
+  directory: "/fulfillment-service"
+  schedule:
+    # Check for updates to container base images every week
+    interval: "weekly"
+  groups:
+    fulfillment-service-container-images:
+      patterns:
+        - "*"
+  commit-message:
+    prefix: "NO-ISSUE"
+
+- package-ecosystem: "docker"
+  directory: "/osac-operator"
+  schedule:
+    # Check for updates to container base images every week
+    interval: "weekly"
+  groups:
+    osac-operator-container-images:
+      patterns:
+        - "*"
+  commit-message:
+    prefix: "NO-ISSUE"

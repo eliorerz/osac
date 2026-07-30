@@ -15,15 +15,17 @@
 # The published docs reflect the latest successfully deployed output from 'main' and are NOT release-versioned.
 # See docs/OPENAPI.md for details on why tag-triggered publishing is intentionally excluded.
 
-name: Publish OpenAPI
+name: "fulfillment-service: Publish OpenAPI"
 
 on:
   push:
     branches:
     - main
+    paths:
+      - 'fulfillment-service/**'
 
 concurrency:
-  group: publish-openapi-${{ github.ref }}
+  group: fulfillment-service-publish-openapi-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -44,6 +46,8 @@ jobs:
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-go
+      with:
+        working-directory: fulfillment-service
     - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3  # v1
       with:
         setup_only: true
@@ -51,10 +55,11 @@ jobs:
       with:
         distribution: 'temurin'
         java-version: '21'
-    - run: |
+    - working-directory: fulfillment-service
+      run: |
         go build ./cmd/osac-dev
         ./osac-dev generate openapi --project-dir . --output-dir pages/openapi
     - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
       with:
-        path: pages
+        path: fulfillment-service/pages
     - uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0

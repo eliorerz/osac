@@ -1,12 +1,13 @@
-name: Integration Tests
+name: "osac-operator: Integration Tests"
 
 on:
   pull_request:
-    paths-ignore:
-      - 'OWNERS'
-      - 'LICENSE'
-      - '*.md'
-      - 'docs/**'
+    paths:
+      - 'osac-operator/**'
+      - '!osac-operator/OWNERS'
+      - '!osac-operator/LICENSE'
+      - '!osac-operator/**/*.md'
+      - '!osac-operator/docs/**'
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
@@ -31,7 +32,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version-file: 'osac-operator/go.mod'
 
       - name: Create Kind cluster
         uses: helm/kind-action@v1
@@ -42,4 +43,4 @@ jobs:
         timeout-minutes: 15
         env:
           CONTAINER_TOOL: docker
-        run: make test-integration-kind
+        run: make -C osac-operator test-integration-kind

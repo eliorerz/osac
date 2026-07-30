@@ -14,6 +14,11 @@
 
 name: Setup Go
 description: Install and Go and Ginkgo
+inputs:
+  working-directory:
+    description: Directory containing go.mod (composite action steps don't inherit a calling job's defaults.run.working-directory)
+    required: false
+    default: '.'
 runs:
   using: composite
   steps:
@@ -21,15 +26,17 @@ runs:
     with:
       go-version: '1.26.3'
   - shell: bash
+    working-directory: ${{ inputs.working-directory }}
     run: |
       go mod download
   - id: ginkgo-cache
     uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae  # v5
     with:
-      key: ginkgo-${{ hashFiles('go.mod') }}
+      key: ginkgo-${{ hashFiles(format('{0}/go.mod', inputs.working-directory)) }}
       path: ~/go/bin/ginkgo
   - if: steps.ginkgo-cache.outputs.cache-hit != 'true'
     shell: bash
+    working-directory: ${{ inputs.working-directory }}
     run: |
       module="github.com/onsi/ginkgo/v2"
       version=$(go list -f '{{ .Version }}' -m "${module}")

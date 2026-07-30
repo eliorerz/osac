@@ -1,17 +1,17 @@
-name: Check Floating Image Tags
+name: "osac-operator: Check Floating Image Tags"
 
 on:
   pull_request:
     paths:
-      - 'charts/**/values.yaml'
+      - 'osac-operator/charts/**/values.yaml'
       - '.github/scripts/check-floating-tags.sh'
-      - '.github/workflows/check-floating-tags.yaml'
+      - '.github/workflows/osac-operator-check-floating-tags.yaml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: check-floating-tags-${{ github.event.pull_request.number || github.ref }}
+  group: osac-operator-check-floating-tags-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -25,4 +25,5 @@ jobs:
         persist-credentials: false
 
     - name: Check for unmarked floating image tags
-      run: bash .github/scripts/check-floating-tags.sh
+      working-directory: osac-operator
+      run: bash ../.github/scripts/check-floating-tags.sh

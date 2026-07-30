@@ -12,34 +12,28 @@
 # the License.
 #
 
-name: Check pull request
+name: "fulfillment-service: Check pull request"
 
 on:
   pull_request:
     branches:
     - main
-    paths-ignore:
-      - 'OWNERS'
-      - 'LICENSE'
-      - '*.md'
-      - 'docs/**'
+    paths:
+      - 'fulfillment-service/**'
+      - '!fulfillment-service/OWNERS'
+      - '!fulfillment-service/LICENSE'
+      - '!fulfillment-service/**/*.md'
+      - '!fulfillment-service/docs/**'
 
 permissions:
   contents: read
 
 jobs:
 
-  check-pre-commit:
-    name: Check pre-commit
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        persist-credentials: false
-    - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-    - uses: pre-commit/action@2c7b3805fd2a0fd8c1884dcaebf91fc102a13ecd  # v3.0.1
-      with:
-        extra_args: -c .pre-commit-config-ci.yaml
+  # check-pre-commit (fulfillment-service's own .pre-commit-config-ci.yaml) is
+  # intentionally removed here: the root pre-commit.yaml workflow now runs the
+  # same hook set (trailing-whitespace, yamllint, etc.) repo-wide with
+  # correctly component-scoped excludes, making this duplicate redundant.
 
   check-python-code:
     name: Check Python code
@@ -49,7 +43,8 @@ jobs:
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-python
-    - run: uv run ruff check
+    - working-directory: fulfillment-service
+      run: uv run ruff check
 
   check-go-code:
     name: Check Go and proto code
@@ -59,12 +54,15 @@ jobs:
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-go
+      with:
+        working-directory: fulfillment-service
     - uses: ./.github/actions/setup-python
     - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3  # v1
       with:
         version: '1.50.0'
         setup_only: true
-    - run: |
+    - working-directory: fulfillment-service
+      run: |
         uv run dev.py lint
 
   check-generated-code:
@@ -78,9 +76,10 @@ jobs:
       with:
         version: '1.50.0'
         setup_only: true
-    - run: |
+    - working-directory: fulfillment-service
+      run: |
         buf generate
-        git diff --exit-code
+        git diff --exit-code -- .
 
   build-binaries:
     name: Build binaries
@@ -90,6 +89,9 @@ jobs:
       with:
         persist-credentials: false
     - uses: ./.github/actions/setup-go
+      with:
+        working-directory: fulfillment-service
     - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7
       with:
+        workdir: fulfillment-service
         args: build --snapshot --clean

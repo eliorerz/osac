@@ -1,14 +1,14 @@
-name: Helm Lint
+name: "osac-operator: Helm Lint"
 
 on:
   pull_request:
     paths:
-      - 'api/**'
-      - 'charts/**'
-      - 'config/crd/bases/**'
-      - 'hack/sync-helm-crds.py'
-      - 'Makefile'
-      - '.github/workflows/helm-lint.yaml'
+      - 'osac-operator/api/**'
+      - 'osac-operator/charts/**'
+      - 'osac-operator/config/crd/bases/**'
+      - 'osac-operator/hack/sync-helm-crds.py'
+      - 'osac-operator/Makefile'
+      - '.github/workflows/osac-operator-helm-lint.yaml'
 
 permissions:
   contents: read
@@ -29,6 +29,7 @@ jobs:
         go-version: stable
 
     - name: Verify Helm CRD templates match bases
+      working-directory: osac-operator
       run: make check-helm-crds
 
   helm-lint:
@@ -46,13 +47,17 @@ jobs:
         version: v3.17.0
 
     - name: Lint operator-crds chart
+      working-directory: osac-operator
       run: helm lint charts/operator-crds/
 
     - name: Lint operator chart
+      working-directory: osac-operator
       run: helm lint charts/operator/
 
     - name: Template operator-crds chart
+      working-directory: osac-operator
       run: helm template test charts/operator-crds/ > /dev/null
 
     - name: Template operator chart
+      working-directory: osac-operator
       run: helm template test charts/operator/ > /dev/null

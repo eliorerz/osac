@@ -12,27 +12,29 @@
 # the License.
 #
 
-name: check-generated-code
+# This workflow publishes the protocol buffers specification to the buf schema registry.
+
+name: "fulfillment-service: Publish proto"
 
 on:
-  pull_request:
-    paths-ignore:
-      - 'OWNERS'
-      - 'LICENSE'
-      - '*.md'
-      - 'docs/**'
+  push:
+    tags:
+    - 'v*'
 
 jobs:
 
-  check-generated-code:
-    name: Check generated code
+  publish-proto:
+    name: Publish proto
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v7
-    - uses: bufbuild/buf-action@v1
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
-        version: '1.50.0'
+        persist-credentials: false
+    - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3  # v1
+      with:
         setup_only: true
-    - run: |
-        buf generate
-        git diff --exit-code
+        token: ${{ secrets.BUF_TOKEN }}
+        version: 1.71.0
+    - working-directory: fulfillment-service
+      run: |
+        buf push --label "${{ github.ref_name }}"

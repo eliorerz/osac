@@ -12,11 +12,11 @@
 # the License.
 #
 
-name: Publish charts
+name: "fulfillment-service: Publish charts"
 
 on:
   workflow_run:
-    workflows: ["Container image"]
+    workflows: ["fulfillment-service: Container image"]
     types: [completed]
 
 jobs:
@@ -66,6 +66,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - id: run
+      working-directory: fulfillment-service
       env:
         TAG: ${{ needs.guard.outputs.tag }}
         REGISTRY_USERNAME: ${{ github.actor }}

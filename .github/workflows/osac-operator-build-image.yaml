@@ -1,13 +1,14 @@
-name: Build container image
+name: "osac-operator: Build container image"
 
 on:
   workflow_dispatch:
   pull_request:
-    paths-ignore:
-      - 'OWNERS'
-      - 'LICENSE'
-      - '*.md'
-      - 'docs/**'
+    paths:
+      - 'osac-operator/**'
+      - '!osac-operator/OWNERS'
+      - '!osac-operator/LICENSE'
+      - '!osac-operator/**/*.md'
+      - '!osac-operator/docs/**'
   push:
     branches:
     - main
@@ -38,7 +39,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version-file: 'osac-operator/go.mod'
 
       - name: Install kind
         uses: helm/kind-action@v1
@@ -46,13 +47,16 @@ jobs:
           install_only: true
 
       - name: Run unit tests
+        working-directory: osac-operator
         run: make test
 
       - name: Validate kustomize configurations
+        working-directory: osac-operator
         run: make test-kustomize
 
       - name: Run smoke test
         timeout-minutes: 15
+        working-directory: osac-operator
         run: make test-smoke
 
   build:
@@ -100,8 +104,8 @@ jobs:
         id: build-operator
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: Containerfile
+          context: osac-operator
+          file: osac-operator/Containerfile
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -126,11 +130,12 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: actions/setup-go@v6
         with:
-          go-version-file: 'go.mod'
+          go-version-file: 'osac-operator/go.mod'
 
       # Generate manifests with kustomize pointing to the SHA-tagged image
       - name: Generate manifests with kustomize
         if: github.event_name != 'pull_request'
+        working-directory: osac-operator
         run: |
           # Install kustomize
           make kustomize
@@ -152,6 +157,7 @@ jobs:
       # Create Dockerfile for manifest container
       - name: Create manifest container Dockerfile
         if: github.event_name != 'pull_request'
+        working-directory: osac-operator
         run: |
           cat > Dockerfile.manifests << 'EOF'
           FROM scratch
@@ -176,8 +182,8 @@ jobs:
         if: github.event_name != 'pull_request'
         uses: docker/build-push-action@v7
         with:
-          context: .
-          file: Dockerfile.manifests
+          context: osac-operator
+          file: osac-operator/Dockerfile.manifests
           push: true
           tags: ${{ steps.meta-manifests.outputs.tags }}
           labels: ${{ steps.meta-manifests.outputs.labels }}
