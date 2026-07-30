@@ -12,7 +12,7 @@
 # the License.
 #
 
-name: "fulfillment-service: Check pull request"
+name: Check pull request
 
 on:
   pull_request:

@@ -15,7 +15,7 @@
 # The published docs reflect the latest successfully deployed output from 'main' and are NOT release-versioned.
 # See docs/OPENAPI.md for details on why tag-triggered publishing is intentionally excluded.
 
-name: "fulfillment-service: Publish OpenAPI"
+name: Publish OpenAPI
 
 on:
   push:

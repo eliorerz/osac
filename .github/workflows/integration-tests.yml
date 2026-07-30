@@ -1,0 +1,83 @@
+name: Integration Tests
+
+on:
+  pull_request:
+    branches:
+    - main
+    paths:
+      - 'fulfillment-service/**'
+      - '!fulfillment-service/OWNERS'
+      - '!fulfillment-service/LICENSE'
+      - '!fulfillment-service/**/*.md'
+      - '!fulfillment-service/docs/**'
+      - 'osac-operator/**'
+      - '!osac-operator/OWNERS'
+      - '!osac-operator/LICENSE'
+      - '!osac-operator/**/*.md'
+      - '!osac-operator/docs/**'
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+
+  # fulfillment-service and osac-operator use genuinely different integration
+  # test mechanisms (ginkgo directly vs a Kind cluster + Makefile target), so
+  # these stay separate jobs rather than a matrix -- there's no shared step
+  # sequence to parameterize, only the workflow-level trigger/name were
+  # duplicated before.
+  fulfillment-service:
+    name: Run integration test (fulfillment-service)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-go
+      with:
+        working-directory: fulfillment-service
+    - working-directory: fulfillment-service
+      run: |
+        echo '127.0.0.1 fulfillment-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
+        echo '127.0.0.1 fulfillment-internal-api.osac.svc.cluster.local' | sudo tee -a /etc/hosts
+        echo '127.0.0.1 keycloak.keycloak.svc.cluster.local' | sudo tee -a /etc/hosts
+        IT_DEPLOY_MODE=helm ginkgo run --timeout 1h -v it
+    - if: always()
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+      with:
+        name: logs
+        path: fulfillment-service/logs
+        retention-days: 7
+
+  osac-operator:
+    name: Run integration test (osac-operator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: 'osac-operator/go.mod'
+
+      - name: Create Kind cluster
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: kind
+
+      - name: Run integration tests
+        timeout-minutes: 15
+        env:
+          CONTAINER_TOOL: docker
+        run: make -C osac-operator test-integration-kind

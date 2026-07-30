@@ -1,4 +1,4 @@
-name: "fulfillment-service: Container image"
+name: Container image
 
 on:
   pull_request:

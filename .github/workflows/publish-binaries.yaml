@@ -12,37 +12,31 @@
 # the License.
 #
 
-name: "fulfillment-service: Unit Tests"
+name: Publish binaries
 
 on:
-  pull_request:
-    branches:
-    - main
-    paths:
-      - 'fulfillment-service/**'
-      - '!fulfillment-service/OWNERS'
-      - '!fulfillment-service/LICENSE'
-      - '!fulfillment-service/**/*.md'
-      - '!fulfillment-service/docs/**'
-  workflow_dispatch:
-  schedule:
-    - cron: '0 0 * * *'
-
-permissions:
-  contents: read
+  push:
+    tags:
+    - 'v*'
 
 jobs:
 
-  run-unit-tests:
-    name: Run unit tests
+  publish-binaries:
+    name: Publish binaries
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
+        fetch-depth: 0
         persist-credentials: false
     - uses: ./.github/actions/setup-go
       with:
         working-directory: fulfillment-service
-    - working-directory: fulfillment-service
-      run: |
-        ginkgo run --timeout 1h -r internal
+    - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7
+      with:
+        workdir: fulfillment-service
+        args: release --clean
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

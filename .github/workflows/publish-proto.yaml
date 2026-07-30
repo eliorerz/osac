@@ -12,7 +12,9 @@
 # the License.
 #
 
-name: "fulfillment-service: Publish binaries"
+# This workflow publishes the protocol buffers specification to the buf schema registry.
+
+name: Publish proto
 
 on:
   push:
@@ -21,22 +23,18 @@ on:
 
 jobs:
 
-  publish-binaries:
-    name: Publish binaries
+  publish-proto:
+    name: Publish proto
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
-        fetch-depth: 0
         persist-credentials: false
-    - uses: ./.github/actions/setup-go
+    - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3  # v1
       with:
-        working-directory: fulfillment-service
-    - uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94  # v7
-      with:
-        workdir: fulfillment-service
-        args: release --clean
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        setup_only: true
+        token: ${{ secrets.BUF_TOKEN }}
+        version: 1.71.0
+    - working-directory: fulfillment-service
+      run: |
+        buf push --label "${{ github.ref_name }}"

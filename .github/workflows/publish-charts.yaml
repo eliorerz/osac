@@ -1,8 +1,22 @@
-name: "osac-operator: Publish Helm Charts"
+#
+# Copyright (c) 2025 Red Hat Inc.
+#
+# Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
+# in compliance with the License. You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software distributed under the License
+# is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
+# or implied. See the License for the specific language governing permissions and limitations under
+# the License.
+#
+
+name: Publish charts
 
 on:
   workflow_run:
-    workflows: ["osac-operator: Build container image"]
+    workflows: ["Container image", "Build container image"]
     types: [completed]
 
 env:
@@ -10,6 +24,13 @@ env:
   CHARTS_REPO: ${{ github.repository_owner }}/charts
 
 jobs:
+
+  # Shared guard: validates the triggering tag/build regardless of which
+  # component's image-build workflow fired. Each publish job below then
+  # gates on github.event.workflow_run.name to only publish its own
+  # component's chart -- the image-build workflows themselves stay separate
+  # per component (see build-image.yaml/publish-image.yaml), so this is the
+  # one place their otherwise-independent tag-triggered releases converge.
   guard:
     name: Verify image build succeeded
     runs-on: ubuntu-latest
@@ -40,9 +61,54 @@ jobs:
         fi
         echo "Image build succeeded for tag $HEAD_BRANCH"
 
+  publish-service-chart:
+    name: Publish service chart
+    needs: guard
+    if: success() && github.event.workflow_run.name == 'Container image'
+    runs-on: ubuntu-latest
+    # contents: read to checkout; packages: write to push the chart to GHCR.
+    permissions:
+      contents: read
+      packages: write
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        ref: ${{ needs.guard.outputs.sha }}
+        fetch-depth: 0
+        persist-credentials: false
+    - id: run
+      working-directory: fulfillment-service
+      env:
+        TAG: ${{ needs.guard.outputs.tag }}
+        REGISTRY_USERNAME: ${{ github.actor }}
+        REGISTRY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        REPO: ${{ github.repository }}
+      run: |
+        # Login to the registry:
+        export registry="ghcr.io"
+        echo "${REGISTRY_PASSWORD}" | helm registry login --username "${REGISTRY_USERNAME}" --password-stdin "${registry}"
+
+        # Get the git version from the tag that triggered the image build:
+        export git_version="${TAG}"
+
+        # Update the image reference in the chart:
+        export app_version="${git_version}"
+        export app_image="${registry}/${REPO}:${app_version}"
+        yq -i '.images.service = strenv(app_image)' charts/service/values.yaml
+
+        # Package the chart:
+        export chart_version="${git_version#v}"
+        helm package charts/service --version "${chart_version}" --app-version "${app_version}"
+
+        # Push the chart to the registry:
+        export chart_name="$(yq -r '.name' charts/service/Chart.yaml)"
+        export chart_file="${chart_name}-${chart_version}.tgz"
+        helm push "${chart_file}" "oci://${registry}/${{ github.repository_owner }}/charts"
+
   publish-operator-crds-chart:
     name: Publish osac-operator-crds chart
     needs: guard
+    if: success() && github.event.workflow_run.name == 'Build container image'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -95,6 +161,7 @@ jobs:
   publish-operator-chart:
     name: Publish osac-operator chart
     needs: guard
+    if: success() && github.event.workflow_run.name == 'Build container image'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -149,10 +216,11 @@ jobs:
         helm push osac-operator-${{ steps.version.outputs.version }}.tgz \
           oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
-  create-release:
-    name: Create GitHub Release
+  create-operator-release:
+    name: Create GitHub Release (osac-operator)
     runs-on: ubuntu-latest
     needs: [guard, publish-operator-crds-chart, publish-operator-chart]
+    if: success() && github.event.workflow_run.name == 'Build container image'
     permissions:
       contents: write
     steps:
