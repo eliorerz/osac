@@ -1,19 +1,23 @@
-name: "osac-operator: Helm Lint"
+name: Helm Lint
 
 on:
   pull_request:
     paths:
+      - 'fulfillment-service/charts/**'
       - 'osac-operator/api/**'
       - 'osac-operator/charts/**'
       - 'osac-operator/config/crd/bases/**'
       - 'osac-operator/hack/sync-helm-crds.py'
       - 'osac-operator/Makefile'
-      - '.github/workflows/osac-operator-helm-lint.yaml'
+      - '.github/workflows/helm-lint.yaml'
 
 permissions:
   contents: read
 
 jobs:
+  # osac-operator-only: no other component currently generates Helm CRD
+  # templates from a kubebuilder config/crd/bases/ source of truth, so
+  # there's nothing to matrix this against yet.
   helm-crds-sync:
     name: Check Helm CRD sync
     runs-on: ubuntu-latest
@@ -33,8 +37,18 @@ jobs:
       run: make check-helm-crds
 
   helm-lint:
-    name: Lint Helm charts
+    name: Lint Helm chart (${{ matrix.component }}/${{ matrix.chart }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - component: fulfillment-service
+            chart: service
+          - component: osac-operator
+            chart: operator-crds
+          - component: osac-operator
+            chart: operator
     steps:
     - name: Checkout repository
       uses: actions/checkout@v7
@@ -46,18 +60,10 @@ jobs:
       with:
         version: v3.17.0
 
-    - name: Lint operator-crds chart
-      working-directory: osac-operator
-      run: helm lint charts/operator-crds/
+    - name: Lint chart
+      working-directory: ${{ matrix.component }}
+      run: helm lint charts/${{ matrix.chart }}/
 
-    - name: Lint operator chart
-      working-directory: osac-operator
-      run: helm lint charts/operator/
-
-    - name: Template operator-crds chart
-      working-directory: osac-operator
-      run: helm template test charts/operator-crds/ > /dev/null
-
-    - name: Template operator chart
-      working-directory: osac-operator
-      run: helm template test charts/operator/ > /dev/null
+    - name: Template chart
+      working-directory: ${{ matrix.component }}
+      run: helm template test charts/${{ matrix.chart }}/ > /dev/null

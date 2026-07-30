@@ -1,23 +1,28 @@
-name: "fulfillment-service: Check Floating Image Tags"
+name: Check Floating Image Tags
 
 on:
   pull_request:
     paths:
       - 'fulfillment-service/charts/**/values.yaml'
+      - 'osac-operator/charts/**/values.yaml'
       - '.github/scripts/check-floating-tags.sh'
-      - '.github/workflows/fulfillment-service-check-floating-tags.yaml'
+      - '.github/workflows/check-floating-tags.yaml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: fulfillment-service-check-floating-tags-${{ github.event.pull_request.number || github.ref }}
+  group: check-floating-tags-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   check-floating-tags:
-    name: Reject unmarked floating tags
+    name: Reject unmarked floating tags (${{ matrix.component }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [fulfillment-service, osac-operator]
     steps:
     - name: Checkout
       uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
@@ -25,5 +30,5 @@ jobs:
         persist-credentials: false
 
     - name: Check for unmarked floating image tags
-      working-directory: fulfillment-service
+      working-directory: ${{ matrix.component }}
       run: bash ../.github/scripts/check-floating-tags.sh

@@ -1,0 +1,37 @@
+name: Check generated code
+
+on:
+  pull_request:
+    paths:
+      - 'fulfillment-service/**'
+      - '!fulfillment-service/OWNERS'
+      - '!fulfillment-service/LICENSE'
+      - '!fulfillment-service/**/*.md'
+      - '!fulfillment-service/docs/**'
+      - 'osac-operator/**'
+      - '!osac-operator/OWNERS'
+      - '!osac-operator/LICENSE'
+      - '!osac-operator/**/*.md'
+      - '!osac-operator/docs/**'
+
+jobs:
+
+  check-generated-code:
+    name: Check generated code (${{ matrix.component }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        component: [fulfillment-service, osac-operator]
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3  # v1
+      with:
+        version: '1.50.0'
+        setup_only: true
+    - working-directory: ${{ matrix.component }}
+      run: |
+        buf generate
+        git diff --exit-code -- .
