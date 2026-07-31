@@ -125,7 +125,7 @@ hack/sync-helm-crds.py     # Script invoked by `make helm-crds` to sync CRDs to 
 - **Unit tests**: Ginkgo + Gomega with `envtest` (real etcd + kube-apiserver)
 - **Integration**: `make test-kustomize` (manifest validation) + `make test-smoke` (kind cluster)
 - **Go integration tests**: `test/integration/` (console_proxy_test.go, integration_suite_test.go, networking_test.go) — run against an already-running kind cluster via `make test-integration-kind` (`go test ./test/integration/ -v -ginkgo.v`)
-- **E2E tests**: pytest-based, live in the separate `osac-test-infra` repo; triggered from this repo via `.github/workflows/e2e-vmaas-full-install.yml`
+- **E2E tests**: pytest-based, live in the separate `osac-test-infra` repo; triggered from this repo via `.github/workflows/e2e-full-install.yml`
 - Kind cluster defaults to `osac` (`KIND_CLUSTER_NAME` in Makefile line 81), but smoke tests create `osac-test`
 - Clean up: `kind delete cluster --name osac-test`
 - `test-kustomize` catches missing files in kustomization.yaml — always run before committing manifest changes
@@ -172,7 +172,7 @@ Hooks are configured in `.claude/settings.json` and run automatically during age
 - **build-image.yaml**: Runs `make test`, `make test-kustomize`, `make test-smoke`, then builds and pushes container + manifest container
 - **check-pull-request.yaml**: Validates `buf generate` output unchanged (ensures gRPC client is up-to-date)
 - **helm-lint.yaml**: Checks CRD sync (`hack/sync-helm-crds.py`) and lints Helm charts
-- **e2e-vmaas-full-install.yml**: E2E tests in VMaaS environment
+- **e2e-full-install.yml**: E2E tests in VMaaS and BMaaS environments
 
 ## Security
 
