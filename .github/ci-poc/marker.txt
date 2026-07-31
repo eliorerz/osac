@@ -1,0 +1,3 @@
+This file exists solely to trigger the path-skip-check PoC workflow's
+dorny/paths-filter for manual verification. Safe to remove once
+verification is complete.
