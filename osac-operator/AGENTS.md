@@ -134,8 +134,8 @@ hack/sync-helm-crds.py     # Script invoked by `make helm-crds` to sync CRDs to 
 
 - **golangci-lint** (see `Makefile` for pinned version) configured in `.golangci.yml`: dupl, errcheck, ginkgolinter, goconst, gocyclo, govet, ineffassign, lll, misspell, prealloc, revive, staticcheck, unconvert, unused
 - Formatters: gofmt, goimports
-- Pre-commit hooks (trailing-whitespace, check-merge-conflict, end-of-file-fixer, yamllint --strict excluding `config/`, detect-private-key, plus a local `golangci-lint` hook) are defined in `.pre-commit-config.yaml`, used for local development. CI runs the equivalent repo-wide hooks via the root-level `pre-commit.yaml` workflow (against the root `.pre-commit-config.yaml`) and lints Go separately via `make lint` — it does not invoke this file directly.
-- Run manually: `pre-commit run --all-files`
+- Pre-commit hooks (trailing-whitespace, check-merge-conflict, end-of-file-fixer, yamllint --strict, detect-private-key, plus an `osac-operator-golangci-lint` hook scoped to this component's `.go` files) are defined in the root-level `.pre-commit-config.yaml` — there is no `osac-operator`-local pre-commit/yamllint config anymore.
+- Run manually from the repo root: `pre-commit run --all-files`
 - **CRITICAL**: Always run `make lint` before committing — CI enforces strict linting
 
 ## Automation Hooks
