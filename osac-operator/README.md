@@ -1,7 +1,7 @@
 # OSAC operator
 
 Reconciles custom resources created by the [fulfillment
-service](https://github.com/osac-project/fulfillment-service/) or elsewhere.
+service](../fulfillment-service/), a sibling component in this repository, or elsewhere.
 
 ## Description
 

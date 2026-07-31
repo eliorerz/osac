@@ -283,4 +283,4 @@ See [Linting and Code Generation](#linting-and-code-generation) for the required
 - `charts/` and `it/charts/` - maintained Helm chart sources, not generated; call out the change explicitly in the PR description so a reviewer from [OWNERS](OWNERS) can confirm it's intentional
 - `proto/**/*.proto` - changes cascade to generated code (see [Linting and Code Generation](#linting-and-code-generation))
 - `internal/database/migrations/*.up.sql` - existing migrations must never be modified; only add new numbered files
-- `.pre-commit-config.yaml`, `.pre-commit-config-ci.yaml`, `.goreleaser.yaml`, `buf.yaml`, `buf.gen.yaml` - infrastructure config; call out the change explicitly in the PR description so a reviewer from [OWNERS](OWNERS) can confirm it's intentional
+- `.pre-commit-config.yaml`, `.goreleaser.yaml`, `buf.yaml`, `buf.gen.yaml` - infrastructure config; call out the change explicitly in the PR description so a reviewer from [OWNERS](OWNERS) can confirm it's intentional
