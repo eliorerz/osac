@@ -1,2 +1,0 @@
-This sentinel file's mere presence makes the PoC workflow's inner
-check job fail on purpose. Removing it lets the check pass.
