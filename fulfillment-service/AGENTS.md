@@ -22,7 +22,7 @@ This file contains only frequently-needed commands and non-obvious rules. For de
 - **Linter configuration**:
   - Go: `.golangci.yml`
   - Python: `pyproject.toml`
-  - YAML: `.yamllint.yaml`
+  - YAML: root-level `.yamllint.yaml` (no component-local copy anymore)
 
 **Before planning or implementing any change, read every document listed above that is
 relevant to the area you are working in.** Do not rely solely on existing source code as a
@@ -198,7 +198,7 @@ The following automated checks are configured and should be run at the appropria
 
 - **After proto changes**: See [Linting and Code Generation](#linting-and-code-generation).
 - **After Go module changes**: When `go.mod` is edited, run `go mod tidy`.
-- **Before committing**: `buf lint` (via `uv run dev.py lint proto`) and the Go linter (via `uv run dev.py lint go`) run automatically as pre-commit hooks — see `.pre-commit-config.yaml` — so there is no need to remember to run them manually, though you still can with `uv run dev.py lint`.
+- **Before committing**: `buf lint` (via `uv run dev.py lint proto`) and the Go linter (via `uv run dev.py lint go`) run automatically as pre-commit hooks — see the `fulfillment-service-*` hooks in the root-level `.pre-commit-config.yaml` (there is no component-local `.pre-commit-config.yaml` anymore) — so there is no need to remember to run them manually, though you still can with `uv run dev.py lint`.
 - **Before creating a PR**: Run `gofmt -s -w .` (auto-formats, then fails if any files changed — commit the fixes first), `uv run dev.py lint proto`, and `ginkgo run -r internal`.
 
 `buf lint` includes a custom plugin rule, `OSAC_OBJECT_SHAPE` (implemented in `cmd/buf-plugin-osac-lint/`), which checks that the base message of every resource — the message returned by `Get` and accepted by `Create` — has the standard `id`/`metadata`/`spec`/`status` shape described above. Messages that intentionally deviate from this shape must be marked with a `// buf:lint:ignore OSAC_OBJECT_SHAPE` comment directly above the message declaration.
@@ -283,4 +283,4 @@ See [Linting and Code Generation](#linting-and-code-generation) for the required
 - `charts/` and `it/charts/` - maintained Helm chart sources, not generated; call out the change explicitly in the PR description so a reviewer from [OWNERS](OWNERS) can confirm it's intentional
 - `proto/**/*.proto` - changes cascade to generated code (see [Linting and Code Generation](#linting-and-code-generation))
 - `internal/database/migrations/*.up.sql` - existing migrations must never be modified; only add new numbered files
-- `.pre-commit-config.yaml`, `.goreleaser.yaml`, `buf.yaml`, `buf.gen.yaml` - infrastructure config; call out the change explicitly in the PR description so a reviewer from [OWNERS](OWNERS) can confirm it's intentional
+- `.goreleaser.yaml`, `buf.yaml`, `buf.gen.yaml` - infrastructure config; call out the change explicitly in the PR description so a reviewer from [OWNERS](OWNERS) can confirm it's intentional (pre-commit/yamllint config now lives in the root-level `.pre-commit-config.yaml`/`.yamllint.yaml`, not here)
