@@ -29,7 +29,7 @@ You will also need the following command-line tools installed:
 - `osac` - To interact with the OSAC system from the command line.
 
 The `osac` CLI can be downloaded from the [releases
-page](https://github.com/osac-project/fulfillment-service/releases) of the project.
+page](https://github.com/osac-project/osac/releases) of the project.
 
 Before starting, set the `DOMAIN` environment variable to the OpenShift applications domain of your
 cluster. This is the domain suffix used by OpenShift routes to construct hostnames. You can find it
@@ -1060,7 +1060,7 @@ helm upgrade fulfillment-service oci://ghcr.io/osac-project/charts/fulfillment-s
 ```
 
 You can add `--version <version>` to pin a specific chart version if needed. See the
-[releases page](https://github.com/osac-project/fulfillment-service/releases) for available
+[releases page](https://github.com/osac-project/osac/releases) for available
 versions.
 
 ## Verify the installation

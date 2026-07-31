@@ -38,7 +38,7 @@ Before installing Keycloak, ensure you have:
 The fulfillment service includes a Helm chart for deploying Keycloak. The chart is published with
 each release as an OCI image at [ghcr.io/osac/charts/keycloak][keycloak-chart].
 
-[keycloak-chart]: https://github.com/osac-project/fulfillment-service/pkgs/container/charts%2Fkeycloak
+[keycloak-chart]: https://github.com/osac-project/osac/pkgs/container/charts%2Fkeycloak
 
 ### Installation Steps
 
