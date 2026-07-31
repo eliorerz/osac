@@ -1,5 +1,5 @@
 ---
-name: E2E BMaaS Full Install
+name: E2E Full Install
 
 permissions:
   contents: read
@@ -8,12 +8,14 @@ on:
   pull_request:
     branches: [main]
   merge_group:
+  schedule:
+    - cron: "0 */12 * * *"
   workflow_dispatch:
     inputs:
       test-suite:
-        description: "Test suite (bmaas, or empty for all)"
+        description: "Test suite override (bmaas, vmaas, caas, or empty for all) -- applied to whichever job(s) run; leave blank to keep each job's own default (bmaas / vmaas)"
         required: false
-        default: "bmaas"
+        default: ""
       test-filter:
         description: "pytest -k filter"
         required: false
@@ -24,7 +26,7 @@ on:
         default: "main"
 
 concurrency:
-  group: e2e-bmaas-full-install-${{ github.event.pull_request.number || github.run_id }}
+  group: e2e-full-install-${{ github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -54,10 +56,19 @@ jobs:
   # touching either component (see `changes` above) rather than being
   # path-scoped per component; splitting this by component to avoid running
   # both suites when only one changed is deferred to the future full
-  # path-based CI matrix, once its skip-logic pattern is verified.
+  # path-based CI matrix, once its skip-logic pattern is verified. Applies to
+  # both e2e jobs below -- they call genuinely different reusable workflows
+  # (bmaas vs vmaas) with their own inputs, so they stay separate jobs rather
+  # than a matrix.
   e2e-bmaas-full-install:
     needs: changes
-    if: needs.changes.outputs.should-run == 'true'
+    # bmaas never ran on a schedule before this file merged bmaas and vmaas
+    # together. `schedule:` can only be set at the workflow level, so without
+    # this guard the now-shared trigger would start firing this job every
+    # 12h too. Excluding schedule here preserves that exact prior behavior;
+    # vmaas needs no equivalent guard since it already ran on both
+    # pull_request and schedule.
+    if: needs.changes.outputs.should-run == 'true' && github.event_name != 'schedule'
     uses: osac-project/osac-test-infra/.github/workflows/e2e-bmaas-full-install.yml@main
     with:
       test-suite: ${{ inputs.test-suite || 'bmaas' }}
@@ -76,16 +87,44 @@ jobs:
       test-infra-repository: osac-project/osac-test-infra
       test-infra-ref: ${{ inputs.test-infra-ref || 'main' }}
 
+  e2e-vmaas-full-install:
+    needs: changes
+    if: needs.changes.outputs.should-run == 'true'
+    uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@main
+    with:
+      test-suite: ${{ inputs.test-suite || 'vmaas' }}
+      test-filter: ${{ inputs.test-filter || '' }}
+      # Build both component images from the PR's fork/branch (same monorepo checkout)
+      component-repo: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      component-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      component-containerfile: fulfillment-service/Containerfile
+      component-image-key: service.images.service
+      component2-repo: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+      component2-ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+      component2-containerfile: osac-operator/Containerfile
+      component2-image-key: operator.image.repository
+      # Pass author_association for fork PR authorization (empty for non-fork PRs)
+      fork-pr-author-association: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.author_association || '' }}
+      fork-pr-author: ${{ github.event.pull_request.head.repo.fork && github.event.pull_request.user.login || '' }}
+      pr-number: ${{ github.event.pull_request.number }}
+      # Checkout osac-test-infra for tests/Containerfile (not the caller repo)
+      test-infra-repository: osac-project/osac-test-infra
+      test-infra-ref: ${{ inputs.test-infra-ref || 'main' }}
+
   e2e:
     if: always()
-    needs: [changes, e2e-bmaas-full-install]
+    needs: [changes, e2e-bmaas-full-install, e2e-vmaas-full-install]
     runs-on: ubuntu-latest
     steps:
+      # e2e-bmaas-full-install shows as 'skipped' (not 'failure'/'cancelled')
+      # on schedule runs and on PRs with should-run == 'false', so those
+      # cases fall through here without tripping the check below.
       - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
         run: |
           echo "Upstream job results:"
           echo "  changes: ${{ needs.changes.result }}"
           echo "  e2e-bmaas-full-install: ${{ needs.e2e-bmaas-full-install.result }}"
+          echo "  e2e-vmaas-full-install: ${{ needs.e2e-vmaas-full-install.result }}"
           echo ""
           echo "One or more upstream jobs failed or were cancelled."
           exit 1
