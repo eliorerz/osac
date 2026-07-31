@@ -14,11 +14,12 @@ on:
   pull_request:
     branches:
       - main
-    paths-ignore:
-      - 'OWNERS'
-      - 'LICENSE'
-      - '*.md'
-      - 'docs/**'
+    paths:
+      - 'osac-aap/**'
+      - '!osac-aap/OWNERS'
+      - '!osac-aap/LICENSE'
+      - '!osac-aap/**/*.md'
+      - '!osac-aap/docs/**'
 
 jobs:
   build-execution-environment:
@@ -35,12 +36,14 @@ jobs:
       - name: "Set up Python"
         uses: actions/setup-python@v6
         with:
-          python-version-file: "pyproject.toml"
+          python-version-file: "osac-aap/pyproject.toml"
 
       - name: Install the project
+        working-directory: osac-aap
         run: uv sync --locked --all-extras --group development
 
       - name: Build execution enviroment
+        working-directory: osac-aap
         run: |
           uv tool run ansible-builder build -vvv                        \
                                             --container-runtime podman  \
@@ -52,7 +55,11 @@ jobs:
         id: meta
         uses: docker/metadata-action@v6
         with:
-          images: ghcr.io/${{ github.repository }}
+          # Hardcoded rather than ghcr.io/${{ github.repository }}: that now
+          # resolves to ghcr.io/osac-project/osac for every component's build
+          # workflow post-merge (see OSAC-3490), colliding on mutable tags.
+          # Keeping this component's pre-merge image identity stable instead.
+          images: ghcr.io/osac-project/osac-aap
           tags: |
             type=semver,pattern=v{{version}}
             type=semver,pattern=v{{major}}.{{minor}}

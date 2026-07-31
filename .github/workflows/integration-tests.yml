@@ -15,6 +15,11 @@ on:
       - '!osac-operator/LICENSE'
       - '!osac-operator/**/*.md'
       - '!osac-operator/docs/**'
+      - 'osac-aap/**'
+      - '!osac-aap/OWNERS'
+      - '!osac-aap/LICENSE'
+      - '!osac-aap/**/*.md'
+      - '!osac-aap/docs/**'
   workflow_dispatch:
   schedule:
     - cron: '0 0 * * *'
@@ -28,11 +33,11 @@ permissions:
 
 jobs:
 
-  # fulfillment-service and osac-operator use genuinely different integration
-  # test mechanisms (ginkgo directly vs a Kind cluster + Makefile target), so
-  # these stay separate jobs rather than a matrix -- there's no shared step
-  # sequence to parameterize, only the workflow-level trigger/name were
-  # duplicated before.
+  # fulfillment-service, osac-operator, and osac-aap use genuinely different
+  # integration test mechanisms (ginkgo directly, a Kind cluster + Makefile
+  # target, and a Kind cluster + uv/pytest respectively), so these stay
+  # separate jobs rather than a matrix -- there's no shared step sequence to
+  # parameterize, only the workflow-level trigger/name were duplicated before.
   fulfillment-service:
     name: Run integration test (fulfillment-service)
     runs-on: ubuntu-latest
@@ -81,3 +86,39 @@ jobs:
         env:
           CONTAINER_TOOL: docker
         run: make -C osac-operator test-integration-kind
+
+  osac-aap:
+    name: Run integration test (osac-aap)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: "Set up Python"
+        uses: actions/setup-python@v6
+        with:
+          python-version-file: "osac-aap/pyproject.toml"
+
+      - name: Install the project
+        working-directory: osac-aap
+        run: uv sync --locked --all-extras --group development
+
+      - name: Install Python dependencies for tests
+        run: pip install kubernetes openstacksdk
+
+      - name: Install kind
+        uses: helm/kind-action@v1
+        with:
+          cluster_name: osac-test
+          install_only: true
+
+      - name: Run integration tests
+        working-directory: osac-aap
+        run: uv run make test
+        env:
+          STORAGE_TESTS_ENABLED: "true"

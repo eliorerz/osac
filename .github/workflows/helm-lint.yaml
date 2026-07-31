@@ -9,6 +9,7 @@ on:
       - 'osac-operator/hack/sync-helm-crds.py'
       - 'osac-operator/Makefile'
       - 'fulfillment-service/charts/**'
+      - 'osac-aap/charts/**'
       - '.github/workflows/helm-lint.yaml'
 
 permissions:
@@ -38,8 +39,8 @@ jobs:
 
   # fulfillment-service's chart guards most values with `required "..." .Values.X`
   # (auth/certs/idp config), so it needs its CI-only charts/service/ci-values.yaml
-  # passed via -f to lint/template cleanly -- osac-operator's charts have no such
-  # guards and lint fine bare.
+  # passed via -f to lint/template cleanly -- osac-operator's and osac-aap's
+  # charts have no such guards and lint fine bare.
   helm-lint:
     name: Lint Helm chart (${{ matrix.component }}/${{ matrix.chart }})
     runs-on: ubuntu-latest
@@ -54,6 +55,8 @@ jobs:
           - component: fulfillment-service
             chart: service
             values-file: ci-values.yaml
+          - component: osac-aap
+            chart: aap
     steps:
     - name: Checkout repository
       uses: actions/checkout@v7

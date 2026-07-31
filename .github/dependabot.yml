@@ -1,4 +1,4 @@
-# Set update schedule for GitHub Actions, Go modules, and container images
+# Set update schedule for GitHub Actions, Go modules, Python (uv) dependencies, and container images
 
 version: 2
 updates:
@@ -29,6 +29,18 @@ updates:
     interval: "weekly"
   groups:
     osac-operator-go-dependencies:
+      patterns:
+        - "*"
+  commit-message:
+    prefix: "NO-ISSUE"
+
+- package-ecosystem: "uv"
+  directory: "/osac-aap"
+  schedule:
+    # Check for updates to Python (uv) dependencies every week
+    interval: "weekly"
+  groups:
+    osac-aap-python-dependencies:
       patterns:
         - "*"
   commit-message:

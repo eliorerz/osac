@@ -31,6 +31,14 @@ jobs:
   # component's chart -- the image-build workflows themselves stay separate
   # per component (see build-image.yaml/publish-image.yaml), so this is the
   # one place their otherwise-independent tag-triggered releases converge.
+  #
+  # osac-aap's execution-environment.yml is NOT wired in here yet: PR #29
+  # (OSAC-3467) is reworking this guard job to use component-scoped tags
+  # (<component>/vX.Y.Z) and a shared `version` output instead of the bare
+  # `v*` matching below, and is still open/under review. Wiring osac-aap in
+  # against the current unscoped shape would conflict with that PR and need
+  # rework regardless of merge order. Deferred to a follow-up once PR #29's
+  # final shape lands -- see OSAC-3491.
   guard:
     name: Verify image build succeeded
     runs-on: ubuntu-latest

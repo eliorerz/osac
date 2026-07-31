@@ -1,7 +1,7 @@
 # OSAC
 
 This is the mono-repo for the [Open Sovereign AI Cloud (OSAC)](https://github.com/osac-project)
-project. It currently hosts two components as subdirectories, each retaining its own
+project. It currently hosts three components as subdirectories, each retaining its own
 documentation:
 
 - **[fulfillment-service/](fulfillment-service/README.md)** — a gRPC server (with REST gateway)
@@ -13,6 +13,10 @@ documentation:
   `ComputeInstance`, `Tenant`, `VirtualNetwork`, `Subnet`, and `SecurityGroup`. It provisions
   infrastructure via Ansible Automation Platform and includes a console proxy for KubeVirt VM
   console/VNC access.
+- **[osac-aap/](osac-aap/README.md)** — the Ansible automation layer: playbooks, roles, and
+  collections that provision and manage infrastructure resources (networking, compute,
+  bare-metal hosts, OpenShift clusters) when triggered by osac-operator via Ansible Automation
+  Platform (AAP).
 
 See each subdirectory's `README.md` (and `docs/`, where present) for setup, build, test, and
 deployment instructions specific to that component.
