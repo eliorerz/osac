@@ -16,8 +16,6 @@ is structural (YAML lint, pre-commit, Helm lint, Helm template render).
    Implement the minimal fix. Key constraints:
    - Never modify files inside any `base/*/` submodule directories
      (discover with: `git submodule status`).
-   - After submodule pointer changes, run
-     `./scripts/sync-image-tags.sh --fix` to update corresponding image tags.
 
 4. **Validate changes**
    Run all validation commands from the installer root in sequence. If any

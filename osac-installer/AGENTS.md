@@ -20,7 +20,7 @@ make helm-validate
 ## Common Commands
 
 ```bash
-# Initialize submodules (required before sync-image-tags)
+# Initialize submodules
 git submodule update --init --recursive
 
 # Helm lint (all three charts)
@@ -121,14 +121,13 @@ values/
 Pull secrets and AAP license files are stored alongside values files (e.g.,
 `values/<env>/pull-secret.json`, `values/<env>/license.zip`).
 
-Submodules are pinned snapshots for version tracking. They do not auto-sync --
-to test local changes, synchronize modified files from the working repo into
-the submodule directory, without committing. During active development the
-submodule pointers are often dirty; this is expected. Image tags in
-`values/*/values.yaml` must match submodule commits — CI enforces this via
-`scripts/sync-image-tags.sh`. Image tags follow the `sha-XXXXXXX` format
-(first 7 characters of the submodule commit SHA). After updating a submodule
-pointer, run `./scripts/sync-image-tags.sh --fix`.
+osac-operator, fulfillment-service, osac-aap, and bare-metal-fulfillment-operator
+are mono-repo-resident directories, not submodules -- they share this repo's own
+commit history with osac-installer itself (only osac-csi-driver, under `base/`,
+remains a real submodule). There is deliberately no image-tag pinning/syncing
+for these four in `values/*/values.yaml`: CI values files always build from
+whatever's under test (image tag `latest`), so there is no separate commit/tag
+to keep in sync and no bump-bot involved.
 
 Prerequisites are installed via Phase 1 (`make install-operators`) and Phase 2
 (`make install-prereqs`), each gated by values toggles. `ca-bundle` Bundle is
@@ -141,11 +140,8 @@ phase details.
 See `README.md` for complete script documentation. Most commonly used:
 
 - **teardown.sh** -- Full teardown: uninstalls Helm releases, removes operators and CRDs
-- **sync-image-tags.sh** -- Syncs image tags in Helm values files to match submodule commits
 - **setup-remote-cluster.sh** -- CI-only: prepares a fresh remote cluster (LVMS, CNV, service accounts)
 - **create-hub-access-kubeconfig.sh** -- Generates `kubeconfig.hub-access` from the hub-access ServiceAccount token
-- **generate-chart-versions.sh** -- Computes nightly chart versions from latest release tags
-- **get-chart-version.sh** -- Looks up a field (version/source_tag/source_sha) from chart-versions.txt
 - **oc.sh** -- Wraps `oc` with `--as` impersonation when `OC_IMPERSONATE` is set
 - **refresh-after-snapshot.py** -- Refreshes Helm-deployed cluster after booting from cold snapshot
 - **setup-caas-agents.sh** -- Sets up CaaS agent infrastructure (InfraEnv + agent VM + label + approve)
@@ -153,22 +149,15 @@ See `README.md` for complete script documentation. Most commonly used:
 
 ### CI Workflows
 
-| Workflow | Purpose |
-|----------|---------|
-| `bump-submodules.yaml` | Automated submodule updates |
-| `check-image-tags.yaml` | Verifies image tags match submodule SHAs |
-| `cleanup-nightly-branches.yaml` | Cleans up old nightly branches |
-| `e2e-bmaas-full-install.yml` | BM-as-a-Service E2E tests |
-| `e2e-vmaas-full-install.yml` | VMaaS E2E tests |
-| `helm-lint.yaml` | Helm chart linting |
-| `integration-tests.yml` | Integration test suite |
-| `mirror-envoy.yaml` | Mirrors Envoy images |
-| `nightly-build.yaml` | Nightly chart build and publish |
-| `ok-to-test-label-cleanup.yml` | Removes ok-to-test label on new pushes |
-| `pre-commit.yaml` | Pre-commit hook checks |
-| `publish-charts.yaml` | Publishes Helm charts on release |
-| `secret-scanning.yaml` | Scans for leaked secrets |
-| `slash-command.yml` | Handles PR slash commands |
+GitHub Actions only discovers workflows under the repo root's `.github/workflows/`,
+so osac-installer-specific CI now lives there (not under `osac-installer/.github/`):
+`nightly-build.yaml` (nightly umbrella chart build+publish, tested via e2e against
+the current commit directly -- no submodule bump step) and
+`publish-osac-installer-chart.yaml` (manual-dispatch umbrella chart release; takes
+one mono-repo release `version` plus an independent `ui_version` for osac-ui).
+osac-installer's own `e2e-*-full-install.yml`, `helm-lint.yaml`, and
+`integration-tests.yml` coverage is also at root (matrixed/composed alongside the
+other components). See root `.github/workflows/` for the full list.
 
 ## Workflows
 
