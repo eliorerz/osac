@@ -296,6 +296,10 @@ jobs:
     runs-on: osac-ci
     timeout-minutes: 10
     if: failure()
+    permissions:
+      # Only needed for the checkout step below (resolves the local
+      # vault-slack-webhook composite action) -- least privilege.
+      contents: read
 
     steps:
     - name: Checkout repository

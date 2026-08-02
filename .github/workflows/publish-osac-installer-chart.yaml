@@ -53,11 +53,21 @@ jobs:
         # permissive `[a-zA-Z0-9.]+` charset let through.
         SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*)?(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$'
 
-        # Umbrella chart version: from input, or from git tag
+        # Umbrella chart version: from input, or from the osac/vX.Y.Z tag
+        # this run was dispatched against. This workflow is workflow_dispatch
+        # -only (no push: tags: trigger), but workflow_dispatch still lets a
+        # caller pick any ref -- including one of this chart's own release
+        # tags -- via the "Use workflow from" ref selector. A branch ref
+        # (e.g. "main") can't yield a version on its own, so require the
+        # input explicitly rather than feeding a branch name into the semver
+        # check and failing with a confusing error two lines down.
         if [ -n "${INPUT_VERSION}" ]; then
           version="${INPUT_VERSION}"
+        elif [[ "${GITHUB_REF_NAME}" == osac/v* ]]; then
+          version="${GITHUB_REF_NAME#osac/v}"
         else
-          version="${GITHUB_REF_NAME#v}"
+          echo "::error::version input is required when dispatching against a non-release ref (${GITHUB_REF_NAME})"
+          exit 1
         fi
 
         if ! [[ "${version}" =~ ${SEMVER_RE} ]]; then
@@ -133,21 +143,30 @@ jobs:
         grep -E "tag:|image:" osac-installer/charts/osac/values.yaml
 
     - name: Validate chart
+      working-directory: osac-installer
       run: |
         set -euo pipefail
-        # values/development/values.yaml supplies the required fields (idp.url,
-        # certs.caBundle, etc.) that the bare chart defaults leave empty --
-        # this step is checking the just-rewritten Chart.yaml/values.yaml
-        # render cleanly, not re-verifying the image tags set above.
-        helm lint osac-installer/charts/osac/ \
-          --values osac-installer/values/development/values.yaml \
-          --set service.externalHostname=fulfillment-api.example.com \
-          --set service.internalHostname=fulfillment-internal-api.example.com
-        helm template osac osac-installer/charts/osac/ \
-          --values osac-installer/values/development/values.yaml \
-          --set service.externalHostname=fulfillment-api.example.com \
-          --set service.internalHostname=fulfillment-internal-api.example.com \
-          > /dev/null
+        # Mirrors helm-lint.yaml's own two loops (ci/*-values.yaml need no
+        # extra overrides, they're self-contained; values/*/values.yaml
+        # leave hostnames blank for a real cluster to fill in) -- this step
+        # is checking the just-rewritten Chart.yaml/values.yaml render
+        # cleanly across every overlay this chart actually ships, not just
+        # re-verifying the image tags set above.
+        for f in charts/osac/ci/*-values.yaml; do
+          echo "--- helm lint/template with $(basename "$f") ---"
+          helm lint charts/osac/ --values "$f"
+          helm template osac charts/osac/ --values "$f" > /dev/null
+        done
+        for f in values/*/values.yaml; do
+          echo "--- helm lint/template with $(dirname "$f" | xargs basename) ---"
+          helm lint charts/osac/ --values "$f" \
+            --set service.externalHostname=fulfillment-api.example.com \
+            --set service.internalHostname=fulfillment-internal-api.example.com
+          helm template osac charts/osac/ --values "$f" \
+            --set service.externalHostname=fulfillment-api.example.com \
+            --set service.internalHostname=fulfillment-internal-api.example.com \
+            > /dev/null
+        done
 
     - name: Package chart
       env:
@@ -203,11 +222,20 @@ jobs:
         # resolve_release_tag's git-describe search for -- an unrelated
         # component's tag history (e.g. fulfillment-service tagged bare
         # vX.Y.Z releases before OSAC-3529 moved it to a scoped prefix).
+        #
+        # --target "$GITHUB_SHA": without it, `gh release create` on a
+        # not-yet-existing tag points the new tag at the default branch's
+        # current tip, not the commit this run actually checked out,
+        # built, and packaged -- which can differ if this was dispatched
+        # against a non-default ref, or if the default branch moved during
+        # the run.
         gh release create "osac/v${VERSION}" \
           --repo "${{ github.repository }}" \
           --title "OSAC v${VERSION}" \
+          --target "$GITHUB_SHA" \
           --notes-file "$BODY" \
         || gh release edit "osac/v${VERSION}" \
           --repo "${{ github.repository }}" \
+          --target "$GITHUB_SHA" \
           --notes-file "$BODY"
         rm -f "$BODY"

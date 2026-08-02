@@ -1,5 +1,11 @@
 #!/usr/bin/env bash
 
+# Sourced by other scripts, all of which already set this themselves before
+# sourcing -- set here too so a function like resolve_release_tag() still
+# fails loudly instead of silently continuing on an internal error if this
+# is ever sourced by a script that forgot to.
+set -euo pipefail
+
 # Retry a condition until it succeeds or times out, optionally running a command each iteration
 # Usage: retry_until <timeout_seconds> <interval_seconds> <condition_command> [loop_command]
 # Returns: 0 on success, 1 on timeout
