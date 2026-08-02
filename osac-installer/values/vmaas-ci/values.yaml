@@ -55,7 +55,7 @@ service:
   internalHostname: ""  # Set to fulfillment-internal-api-<namespace>.apps.<cluster>.<domain>
   variant: openshift
   images:
-    service: ghcr.io/osac-project/fulfillment-service:latest
+    service: ghcr.io/osac-project/fulfillment-service:main
     envoy: ghcr.io/osac-project/envoy:v1.33.0
   certs:
     issuerRef:
