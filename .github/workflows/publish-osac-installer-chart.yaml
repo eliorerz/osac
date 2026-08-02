@@ -120,6 +120,7 @@ jobs:
           .bmf.image.tag = \"v${VERSION}\" |
           .service.images.service = \"ghcr.io/osac-project/fulfillment-service:v${VERSION}\" |
           .aap.bootstrap.image = \"ghcr.io/osac-project/osac-aap:v${VERSION}\" |
+          .aap.configAsCode.eeImage = \"ghcr.io/osac-project/osac-aap:v${VERSION}\" |
           .ui.images.ui = \"ghcr.io/osac-project/osac-ui:v${UI_VER}\" |
           .dbMigrate.image = \"ghcr.io/osac-project/fulfillment-service:v${VERSION}\"
         " osac-installer/charts/osac/values.yaml
