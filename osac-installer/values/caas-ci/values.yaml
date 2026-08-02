@@ -126,6 +126,12 @@ aap:
   configAsCode:
     manifestSecret: "config-as-code-manifest-ig"
     secret: "config-as-code-ig"
+    # NOTE: e2e's COMPONENT_BUILD_RESULTS image-override step overrides
+    # bootstrap.image with this PR's own built image but does not touch
+    # eeImage, so the two can diverge at e2e runtime even though they're
+    # the same base value here. Extending that override to cover eeImage
+    # too is tracked separately (OSAC-3545), since it lives in
+    # osac-test-infra, not this repo.
     eeImage: "ghcr.io/osac-project/osac-aap:latest"
     projectGitUri: "https://github.com/osac-project/osac-aap"
     projectGitBranch: "8a48092a84ca9eb0f9be2fdf9796dce58366c0e7"

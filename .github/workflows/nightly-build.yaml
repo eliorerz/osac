@@ -36,7 +36,7 @@ jobs:
       installer-repo: ${{ github.repository }}
       installer-ref: ${{ github.sha }}
       test-infra-repository: osac-project/osac-test-infra
-      test-infra-ref: main
+      test-infra-ref: 7e647cbc8f283d65c47fe82084056347c69ad39e  # main
 
   # -------------------------------------------------------------------
   # Job 2: Package and publish the umbrella chart (only if E2E passes)
@@ -45,6 +45,7 @@ jobs:
     name: Publish nightly chart
     needs: e2e-test
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     permissions:
       contents: read
       # Push/pull chart OCI artifacts to GHCR
@@ -181,6 +182,7 @@ jobs:
     name: Tag and notify
     needs: publish
     runs-on: osac-ci
+    timeout-minutes: 15
     if: success()
     permissions:
       # Create the nightly git tag
@@ -303,6 +305,7 @@ jobs:
     name: Notify failure
     needs: [e2e-test, publish, tag-and-notify]
     runs-on: osac-ci
+    timeout-minutes: 10
     if: failure()
 
     steps:
