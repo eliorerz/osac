@@ -47,7 +47,11 @@ jobs:
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_UI_VERSION: ${{ inputs.ui_version }}
       run: |
-        SEMVER_RE='^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?(\+[a-zA-Z0-9.]+)?$'
+        # Full semver.org grammar (adapted to POSIX ERE for bash's =~): rejects
+        # leading-zero numeric identifiers (e.g. "01.2.3", "1.2.3-01") and
+        # malformed dot-separated prerelease/build identifiers that the prior
+        # permissive `[a-zA-Z0-9.]+` charset let through.
+        SEMVER_RE='^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*)(\.(0|[1-9][0-9]*|[0-9]*[a-zA-Z-][0-9a-zA-Z-]*))*)?(\+[0-9a-zA-Z-]+(\.[0-9a-zA-Z-]+)*)?$'
 
         # Umbrella chart version: from input, or from git tag
         if [ -n "${INPUT_VERSION}" ]; then
@@ -128,6 +132,23 @@ jobs:
         echo "--- Updated values.yaml image references ---"
         grep -E "tag:|image:" osac-installer/charts/osac/values.yaml
 
+    - name: Validate chart
+      run: |
+        set -euo pipefail
+        # values/development/values.yaml supplies the required fields (idp.url,
+        # certs.caBundle, etc.) that the bare chart defaults leave empty --
+        # this step is checking the just-rewritten Chart.yaml/values.yaml
+        # render cleanly, not re-verifying the image tags set above.
+        helm lint osac-installer/charts/osac/ \
+          --values osac-installer/values/development/values.yaml \
+          --set service.externalHostname=fulfillment-api.example.com \
+          --set service.internalHostname=fulfillment-internal-api.example.com
+        helm template osac osac-installer/charts/osac/ \
+          --values osac-installer/values/development/values.yaml \
+          --set service.externalHostname=fulfillment-api.example.com \
+          --set service.internalHostname=fulfillment-internal-api.example.com \
+          > /dev/null
+
     - name: Package chart
       env:
         VERSION: ${{ steps.versions.outputs.version }}
@@ -177,11 +198,16 @@ jobs:
         # Strip leading whitespace from heredoc (indented for YAML readability)
         sed -i 's/^        //' "$BODY"
 
-        gh release create "v${VERSION}" \
+        # Scoped "osac/vX.Y.Z" (not a bare vX.Y.Z) so this umbrella chart's
+        # own release tag can't collide with -- or be mistaken by
+        # resolve_release_tag's git-describe search for -- an unrelated
+        # component's tag history (e.g. fulfillment-service tagged bare
+        # vX.Y.Z releases before OSAC-3529 moved it to a scoped prefix).
+        gh release create "osac/v${VERSION}" \
           --repo "${{ github.repository }}" \
           --title "OSAC v${VERSION}" \
           --notes-file "$BODY" \
-        || gh release edit "v${VERSION}" \
+        || gh release edit "osac/v${VERSION}" \
           --repo "${{ github.repository }}" \
           --notes-file "$BODY"
         rm -f "$BODY"

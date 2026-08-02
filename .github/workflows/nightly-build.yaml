@@ -30,13 +30,13 @@ jobs:
     name: E2E validation
     permissions:
       contents: read
-    uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@7e647cbc8f283d65c47fe82084056347c69ad39e  # main
+    uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@main
     with:
       test-suite: vmaas
       installer-repo: ${{ github.repository }}
       installer-ref: ${{ github.sha }}
       test-infra-repository: osac-project/osac-test-infra
-      test-infra-ref: 7e647cbc8f283d65c47fe82084056347c69ad39e  # main
+      test-infra-ref: main
 
   # -------------------------------------------------------------------
   # Job 2: Package and publish the umbrella chart (only if E2E passes)
@@ -96,7 +96,7 @@ jobs:
         # version reflects where this build actually sits relative to
         # real releases.
         BASE_TAG=$(resolve_release_tag .)
-        BASE_VERSION="${BASE_TAG#v}"
+        BASE_VERSION="${BASE_TAG#osac/v}"
         VERSION="${BASE_VERSION}-${NIGHTLY_SUFFIX}"
 
         echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
@@ -145,11 +145,16 @@ jobs:
         SHORT_SHA: ${{ steps.version.outputs.short-sha }}
       run: |
         set -euo pipefail
+        # grep's own no-match exit code (1) must not poison the pipeline under
+        # pipefail -- that would abort the script right here instead of
+        # reaching the test -s check below, which is the actual diagnostic
+        # for "nothing extracted". helm template's real failures still
+        # propagate normally: they fail before grep ever runs.
         helm template osac "osac-installer/osac-${VERSION}.tgz" \
           --values "${VALUES_FILE}" \
           --set service.externalHostname=placeholder.example.com \
           --set service.internalHostname=placeholder-internal.example.com \
-        | grep -oP 'image:\s*\K\S+' \
+        | (grep -oP 'image:\s*\K\S+' || true) \
         | tr -d '"' \
         | sort -u \
         > images.txt
@@ -203,34 +208,18 @@ jobs:
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "github-actions[bot]@users.noreply.github.com"
-        TAG="v${VERSION}"
+        TAG="osac/v${VERSION}"
         git tag "${TAG}" -m "Nightly build ${VERSION}"
         git push origin "${TAG}"
         echo "Tagged: ${TAG}"
 
-    - name: Read AppRole credentials
-      id: approle
-      run: |
-        APPROLE_DIR="${HOME}/.vault-server/.approle"
-        echo "role-id=$(cat "${APPROLE_DIR}/role-id")" >> "$GITHUB_OUTPUT"
-        echo "::add-mask::$(cat "${APPROLE_DIR}/secret-id")"
-        echo "secret-id=$(cat "${APPROLE_DIR}/secret-id")" >> "$GITHUB_OUTPUT"
-
     - name: Retrieve Slack webhook from Vault
       id: vault
-      uses: hashicorp/vault-action@892a26828f195e65540a40b4768ae4571f51ebfc  # v4
-      with:
-        url: http://127.0.0.1:8200
-        method: approle
-        roleId: ${{ steps.approle.outputs.role-id }}
-        secretId: ${{ steps.approle.outputs.secret-id }}
-        exportEnv: false
-        secrets: |
-          secret/data/osac/e2e/slack-webhook-url url | SLACK_WEBHOOK_URL
+      uses: ./.github/actions/vault-slack-webhook
 
     - name: Notify Slack on success
       env:
-        SLACK_WEBHOOK_URL: ${{ steps.vault.outputs.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_URL: ${{ steps.vault.outputs.webhook-url }}
         SERVER_URL: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
         RUN_ID: ${{ github.run_id }}
@@ -309,29 +298,18 @@ jobs:
     if: failure()
 
     steps:
-    - name: Read AppRole credentials
-      id: approle
-      run: |
-        APPROLE_DIR="${HOME}/.vault-server/.approle"
-        echo "role-id=$(cat "${APPROLE_DIR}/role-id")" >> "$GITHUB_OUTPUT"
-        echo "::add-mask::$(cat "${APPROLE_DIR}/secret-id")"
-        echo "secret-id=$(cat "${APPROLE_DIR}/secret-id")" >> "$GITHUB_OUTPUT"
+    - name: Checkout repository
+      # Only needed to resolve the local ./.github/actions/vault-slack-webhook
+      # composite action -- no chart/script content is used in this job.
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v6
 
     - name: Retrieve Slack webhook from Vault
       id: vault
-      uses: hashicorp/vault-action@892a26828f195e65540a40b4768ae4571f51ebfc  # v4
-      with:
-        url: http://127.0.0.1:8200
-        method: approle
-        roleId: ${{ steps.approle.outputs.role-id }}
-        secretId: ${{ steps.approle.outputs.secret-id }}
-        exportEnv: false
-        secrets: |
-          secret/data/osac/e2e/slack-webhook-url url | SLACK_WEBHOOK_URL
+      uses: ./.github/actions/vault-slack-webhook
 
     - name: Notify Slack on failure
       env:
-        SLACK_WEBHOOK_URL: ${{ steps.vault.outputs.SLACK_WEBHOOK_URL }}
+        SLACK_WEBHOOK_URL: ${{ steps.vault.outputs.webhook-url }}
         SERVER_URL: ${{ github.server_url }}
         REPOSITORY: ${{ github.repository }}
         RUN_ID: ${{ github.run_id }}

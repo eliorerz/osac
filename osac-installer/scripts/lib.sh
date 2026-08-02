@@ -127,27 +127,30 @@ http_json() {
     return 1
 }
 
-# Resolve the nearest real (non-nightly) plain vX.Y.Z release tag reachable
-# from a repo path's HEAD. --match narrows git describe's glob search to
-# tags shaped like "vX.Y.Z" so an unrelated tag namespace (e.g. a component
-# repo's "api/vX.Y.Z" Go module tags) isn't picked up if it happens to be
-# nearer HEAD than the real release tag. --match is still a glob, not a
-# real anchor (its trailing '*' is needed to allow multi-digit version
-# segments, but that same '*' would also accept a stray "-rc1"/".4"
-# suffix), so the result is re-validated with a real regex before being
-# trusted. Fails loudly rather than silently guessing a version: publishing
-# a chart under a made-up placeholder tag would be worse than failing the
-# build outright, since it could get pushed to the registry unnoticed.
+# Resolve the nearest real (non-nightly) osac/vX.Y.Z umbrella-chart release
+# tag reachable from a repo path's HEAD. --match narrows git describe's glob
+# search to tags shaped like "osac/vX.Y.Z" -- scoped by the "osac/" prefix,
+# not just a bare "vX.Y.Z", because git tags aren't path-scoped and a bare
+# vX.Y.Z pattern can match an unrelated component's old tag (e.g.
+# fulfillment-service tagged bare vX.Y.Z releases before OSAC-3529 moved it
+# to a component-scoped prefix; that history is still reachable from HEAD).
+# --match is still a glob, not a real anchor (its trailing '*' is needed to
+# allow multi-digit version segments, but that same '*' would also accept a
+# stray "-rc1"/".4" suffix), so the result is re-validated with a real regex
+# before being trusted. Fails loudly rather than silently guessing a
+# version: publishing a chart under a made-up placeholder tag would be worse
+# than failing the build outright, since it could get pushed to the
+# registry unnoticed.
 # Usage: resolve_release_tag <repo_path>
 resolve_release_tag() {
     local path="$1"
     local tag
-    if ! tag=$(git -C "${path}" describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' --exclude '*-nightly*' 2>/dev/null); then
-        echo "ERROR: no real (non-nightly) release tag reachable from ${path} — refusing to guess a version" >&2
+    if ! tag=$(git -C "${path}" describe --tags --abbrev=0 --match 'osac/v[0-9]*.[0-9]*.[0-9]*' --exclude '*-nightly*' 2>/dev/null); then
+        echo "ERROR: no real (non-nightly) osac/vX.Y.Z release tag reachable from ${path} — refusing to guess a version" >&2
         return 1
     fi
-    if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        echo "ERROR: nearest release tag '${tag}' reachable from ${path} is not a plain vX.Y.Z tag — refusing to guess a version" >&2
+    if [[ ! "${tag}" =~ ^osac/v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "ERROR: nearest release tag '${tag}' reachable from ${path} is not a plain osac/vX.Y.Z tag — refusing to guess a version" >&2
         return 1
     fi
     echo "${tag}"

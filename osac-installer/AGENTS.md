@@ -98,11 +98,17 @@ Phase 2: charts/osac-prereqs/           # Cluster prerequisites
   Hook scripts configure each operator after its CRD is ready
 
 Phase 3: charts/osac/                   # OSAC platform (umbrella chart)
-  Dependencies (from submodules via file:// references):
-    osac-operator-crds, osac-operator, fulfillment-service,
-    osac-aap, bare-metal-fulfillment-operator-crds,
-    bare-metal-fulfillment-operator (conditional: bmf.enabled),
+  Dependencies:
+    osac-operator-crds, osac-operator, fulfillment-service, osac-aap,
+      bare-metal-fulfillment-operator-crds,
+      bare-metal-fulfillment-operator (conditional: bmf.enabled)
+      -- mono-repo-resident sibling directories, via file:// references
+    csi-driver, csi-backends (conditional: csiDriver.enabled)
+      -- osac-csi-driver, the one remaining real submodule under base/,
+      also via a file:// reference
     osac-ui (conditional: ui.enabled)
+      -- a real external chart, via an oci:// reference pinned to a
+      released version in Chart.yaml
   Templates: bundled-postgres, hub-access, hooks (create-hub,
     pre-install-validate, publish-templates, seed-cluster-versions)
   values.schema.json validates all configuration
