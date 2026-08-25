@@ -63,7 +63,14 @@ jobs:
           # (Vertex AI backend) and https://github.com/Graphify-Labs/graphify/pull/3087
           # (ci-select + fixes) are merged upstream and a new graphifyy release is published.
           # Then revert to: pip install --user "graphifyy[sql,vertex]==${GRAPHIFY_VERSION}"
-          pip install --user "graphifyy[sql,vertex] @ git+https://github.com/eliorerz/graphify@1a122e1"
+          # Bumped to 653aa4e: configures retry/backoff for the vertex backend's Vertex
+          # AI client (google-genai does not retry 429s at all unless explicitly told to),
+          # needed because osac-ci's gemini-2.5-flash/-pro quota defaults to a
+          # non-adjustable 5 requests/minute -- confirmed live in run 32885843245, where
+          # a large first-run corpus (~1100 docs) hit "Resource exhausted" on 9 of 16
+          # semantic chunks. Retry/backoff lets a run grind through that ceiling instead
+          # of hard-failing; a GCP support request for a higher quota is filed separately.
+          pip install --user "graphifyy[sql,vertex] @ git+https://github.com/eliorerz/graphify@653aa4eddc1e5ffe524a8d928b9e6d7c3c31cdf3"
           echo "${HOME}/.local/bin" >> "$GITHUB_PATH"
 
       - name: Restore prior graphify-out/ state (fast path)
