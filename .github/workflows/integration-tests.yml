@@ -16,8 +16,8 @@ on:
     - cron: '47 */12 * * *'
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
 
 permissions:
   contents: read
@@ -71,7 +71,7 @@ jobs:
   fulfillment-service:
     name: Run integration test (fulfillment-service)
     needs: changes
-    if: needs.changes.outputs.should-run == 'true'
+    if: needs.changes.outputs.should-run == 'true' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 75  # ginkgo --timeout 1h (Makefile) + ~15m for install/setup/log-collection
     steps:
@@ -125,7 +125,7 @@ jobs:
   osac-operator:
     name: Run integration test (osac-operator)
     needs: changes
-    if: needs.changes.outputs.should-run == 'true'
+    if: needs.changes.outputs.should-run == 'true' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 45  # ginkgo --timeout 30m (Makefile) + ~15m for install/setup/log-collection
     steps:
@@ -176,7 +176,7 @@ jobs:
   bare-metal-fulfillment-operator:
     name: Run integration test (bare-metal-fulfillment-operator)
     needs: changes
-    if: needs.changes.outputs.should-run == 'true'
+    if: needs.changes.outputs.should-run == 'true' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     timeout-minutes: 45  # ginkgo --timeout 30m (Makefile) + ~15m for install/setup/log-collection
     steps:
@@ -233,7 +233,7 @@ jobs:
   osac-aap:
     name: Run integration test (osac-aap)
     needs: changes
-    if: needs.changes.outputs.should-run == 'true'
+    if: needs.changes.outputs.should-run == 'true' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -279,7 +279,7 @@ jobs:
   osac-installer:
     name: Run integration test (osac-installer)
     needs: changes
-    if: needs.changes.outputs.should-run == 'true'
+    if: needs.changes.outputs.should-run == 'true' && github.event_name != 'merge_group'
     runs-on: ubuntu-latest
     steps:
     - name: Checkout repository
@@ -375,3 +375,34 @@ jobs:
           --set dbMigrate.enabled=false \
           --timeout 10m \
           --wait
+
+  # The merge queue doesn't need the full Kind-cluster integration suite
+  # re-run -- that already ran at the PR level before this commit entered
+  # the queue. What it does need is a real compile check: none of the jobs
+  # above are in this repo's required_status_checks (only e2e-*-gate and
+  # check-labels are), so on merge_group they were previously running at
+  # full cost for zero merge-gating benefit. This is the actual minimal
+  # thing needed to catch a compile break slipping through the queue (the
+  # original motivation for adding merge_group to this workflow at all) --
+  # go vet, like go build, type-checks _test.go files without executing
+  # them, so a break there is still caught without paying for a full Kind
+  # cluster + ginkgo run.
+  merge-queue-compile-check:
+    name: Compile check (merge queue)
+    needs: changes
+    if: needs.changes.outputs.should-run == 'true' && github.event_name == 'merge_group'
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/setup-go
+      # Default working-directory (repo root): go.work covers all 8 modules
+      # in one invocation, but each must be named explicitly below --
+      # verified directly that a bare `./...` from repo root fails with
+      # "directory prefix . does not contain modules listed in go.work",
+      # since the root itself isn't a workspace member.
+    - run: |
+        MODS="./bare-metal-fulfillment-operator/... ./fulfillment-service/... ./osac-csi-driver/... ./osac-metering/adapters/... ./osac-metering/metering-service/... ./osac-metering/schema/... ./osac-operator/... ./osac-operator/api/..."
+        go build $MODS
+        go vet $MODS
