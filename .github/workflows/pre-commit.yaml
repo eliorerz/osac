@@ -24,8 +24,11 @@ jobs:
   # sixteen minutes apart, PR #307 similarly at .../pr-307-18b1c7ed...58 and
   # .../pr-307-0c86346b...c1 -- both pairs extract to the same "pr-<number>"
   # despite the trailing sha differing every time.
-  concurrency-key:
+  compute-concurrency-key:
     runs-on: ubuntu-latest
+    # No checkout, no API calls -- this job only derives a string from
+    # already-available event context, so it needs no token access at all.
+    permissions: {}
     outputs:
       key: ${{ steps.concurrency-key.outputs.key }}
     steps:
@@ -40,16 +43,23 @@ jobs:
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
             KEY="pr-${PR_NUMBER}"
           elif [[ "${EVENT_NAME}" == "merge_group" ]]; then
-            KEY=$(echo "${REF_NAME}" | grep -oE 'pr-[0-9]+')
+            # tail -1 takes the rightmost match, in case the base branch
+            # name itself happens to contain a pr-<digits> substring. The
+            # `|| true` plus empty-check fallback covers a ref that doesn't
+            # match this shape at all -- GitHub Actions runs `run:` steps
+            # with `set -eo pipefail`, so an unmatched grep would otherwise
+            # abort this step and skip every downstream test job via `needs`.
+            KEY=$(echo "${REF_NAME}" | grep -oE 'pr-[0-9]+' | tail -1 || true)
+            [[ -z "${KEY}" ]] && KEY="run-${RUN_ID}"
           else
             KEY="run-${RUN_ID}"
           fi
           echo "key=${KEY}" >> "$GITHUB_OUTPUT"
 
   pre-commit:
-    needs: concurrency-key
+    needs: compute-concurrency-key
     concurrency:
-      group: pre-commit-${{ needs.concurrency-key.outputs.key }}
+      group: pre-commit-${{ needs.compute-concurrency-key.outputs.key }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'merge_group' }}
     runs-on: ubuntu-latest
     permissions:
