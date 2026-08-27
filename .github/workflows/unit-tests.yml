@@ -102,7 +102,14 @@ jobs:
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then
             KEY="pr-${PR_NUMBER}"
           elif [[ "${EVENT_NAME}" == "merge_group" ]]; then
-            KEY=$(echo "${REF_NAME}" | grep -oE 'pr-[0-9]+')
+            # tail -1 takes the rightmost match, in case the base branch
+            # name itself happens to contain a pr-<digits> substring. The
+            # `|| true` plus empty-check fallback covers a ref that doesn't
+            # match this shape at all -- GitHub Actions runs `run:` steps
+            # with `set -eo pipefail`, so an unmatched grep would otherwise
+            # abort this step and skip every downstream test job via `needs`.
+            KEY=$(echo "${REF_NAME}" | grep -oE 'pr-[0-9]+' | tail -1 || true)
+            [[ -z "${KEY}" ]] && KEY="run-${RUN_ID}"
           else
             KEY="run-${RUN_ID}"
           fi
