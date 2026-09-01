@@ -165,13 +165,19 @@ jobs:
       test-source: "osac"
       test-repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       test-ref: ${{ github.event.pull_request.head.sha || github.sha }}
-      # AI failure diagnosis only for scheduled runs: those always run
-      # against main in this repo's own context (no fork involved), unlike
-      # pull_request/merge_group runs from PRs, which come from genuine
-      # forks and cannot get OIDC/WIF access at all regardless of this
-      # input (a GitHub Actions security policy, not something this input
-      # can override).
-      enable-ai-diagnostic: ${{ github.event_name == 'schedule' }}
+      # Gated on ref, not event type: the real constraint is WIF trust
+      # (main branch only), not which event triggered the run. This
+      # correctly covers schedule (always main) AND a manual
+      # workflow_dispatch run against main (same safe WIF context) --
+      # checking event_name == 'schedule' alone would wrongly exclude the
+      # latter, making it impossible to manually validate this feature
+      # through the real caller. pull_request is naturally excluded since
+      # its github.ref is the synthetic PR-merge ref, never
+      # refs/heads/main -- and moot regardless, since every real PR here
+      # is fork-originated and gets no OIDC/WIF access at all by GitHub
+      # Actions policy. merge_group is excluded the same way (its
+      # github.ref is the readonly-queue ref).
+      enable-ai-diagnostic: ${{ github.ref == 'refs/heads/main' }}
 
   e2e-vmaas-gate:
     if: always()
