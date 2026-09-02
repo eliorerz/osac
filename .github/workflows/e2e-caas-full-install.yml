@@ -136,7 +136,7 @@ jobs:
       contents: read
       # See e2e-vmaas-full-install.yml's identical grant for why this is needed.
       id-token: write
-    uses: osac-project/osac-test-infra/.github/workflows/e2e-caas-full-install.yml@main
+    uses: eliorerz/osac-test-infra/.github/workflows/e2e-caas-full-install.yml@add-suite-fallback
     with:
       test-suite: ${{ inputs.test-suite || 'caas' }}
       test-filter: ${{ inputs.test-filter || '' }}

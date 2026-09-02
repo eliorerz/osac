@@ -136,7 +136,7 @@ jobs:
       # declared job permissions against what the caller grants regardless
       # of runtime reachability, so it must still be granted here.
       id-token: write
-    uses: osac-project/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@main
+    uses: eliorerz/osac-test-infra/.github/workflows/e2e-vmaas-full-install.yml@add-suite-fallback
     with:
       test-suite: ${{ inputs.test-suite || 'vmaas' }}
       test-filter: ${{ inputs.test-filter || '' }}
