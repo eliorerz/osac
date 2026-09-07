@@ -242,6 +242,7 @@ jobs:
       test-infra-ref: ${{ inputs.test-infra-ref || 'main' }}
       test-repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
       test-ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      notify-on-failure: ${{ github.event_name == 'schedule' }}
       # CaaS-specific inputs (cluster-template, caas-domain, flavor-image,
       # flavor-name, namespace, etc.) are left at the reusable workflow's own
       # defaults -- none are required and this caller has no need to override
