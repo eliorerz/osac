@@ -47,6 +47,7 @@ jobs:
       bmaas-clear: ${{ steps.filter.outputs.bmaas-clear }}
       ambiguous-shared: ${{ steps.filter.outputs.ambiguous-shared }}
       config-yaml-json: ${{ steps.filter.outputs.config-yaml-json }}
+      netris-relevant: ${{ steps.filter.outputs.netris-relevant }}
       # JSON arrays of the actual matching paths for EVERY bucket, not just
       # the ambiguous ones -- Gemini's own judgment step now gets shown
       # which specific files earned each deterministic "clear" verdict
@@ -61,6 +62,7 @@ jobs:
       bmaas-clear-files: ${{ steps.filter.outputs.bmaas-clear_files }}
       ambiguous-shared-files: ${{ steps.filter.outputs.ambiguous-shared_files }}
       config-yaml-json-files: ${{ steps.filter.outputs.config-yaml-json_files }}
+      netris-relevant-files: ${{ steps.filter.outputs.netris-relevant_files }}
     steps:
       - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d  # v4.0.3
         id: filter
@@ -153,6 +155,30 @@ jobs:
               - '!fulfillment-service/**/*compute_instance*'
               - '!fulfillment-service/**/*cluster*'
               - '!bare-metal-fulfillment-operator/**'
+            # Informational only -- CaaS Netris and BMaaS Netris (real
+            # EC2/Netris-SDN provisioning, triggered manually via label per
+            # e2e-bmaas-netris-full-install-caller.yml's `pull_request_target:
+            # types: [labeled]` trigger) aren't wired into this POC's gating
+            # at all yet (Phase 3 of the rollout plan, deliberately
+            # sequenced after the 3 standard suites are proven, given real
+            # cloud-cost/security stakes). This filter just surfaces "you
+            # probably want to run the Netris variant manually too" as a
+            # note in the comment, orthogonal to the vmaas/caas/bmaas
+            # decision rows above -- it does not add a new suite or gate
+            # anything.
+            #
+            # `git grep -il netris` confirms osac-aap/collections/
+            # ansible_collections/{netris,agentless_net}/** is the actual
+            # Ansible automation those two backends run -- no other
+            # directory in this repo references either backend by name
+            # outside CI/workflow wiring. tests/e2e/bmaas/regression/
+            # networking/** is confirmed Netris-lab-only per e2e-bmaas-
+            # full-install.yml's own comment ("Networking is Netris-lab
+            # only (eth9, virsh, 3 BMIs)"). fulfillment-service's
+            # NetworkClass files are how the platform represents which
+            # network backend (Netris vs. others) a tenant/subnet uses.
+            netris-relevant:
+              - '{osac-aap/collections/ansible_collections/netris/**,osac-aap/collections/ansible_collections/agentless_net/**,tests/e2e/bmaas/regression/networking/**,fulfillment-service/**/*network_class*}'
 
   # Always runs (whether or not anything is ambiguous) -- the listener needs
   # this context either way, to build the reported decision even in the
@@ -177,6 +203,7 @@ jobs:
           BMAAS_CLEAR_FILES: ${{ needs.changes.outputs.bmaas-clear-files }}
           AMBIGUOUS_FILES: ${{ needs.changes.outputs.ambiguous-shared-files }}
           CONFIG_FILES: ${{ needs.changes.outputs.config-yaml-json-files }}
+          NETRIS_RELEVANT_FILES: ${{ needs.changes.outputs.netris-relevant-files }}
         run: |
           set -euo pipefail
           mkdir -p "${RUNNER_TEMP}/suite-selection-context"
@@ -191,13 +218,15 @@ jobs:
             --argjson bmaas_clear_files "${BMAAS_CLEAR_FILES:-[]}" \
             --argjson ambiguous_files "${AMBIGUOUS_FILES:-[]}" \
             --argjson config_files "${CONFIG_FILES:-[]}" \
+            --argjson netris_relevant_files "${NETRIS_RELEVANT_FILES:-[]}" \
             '{
               pr_number: ($pr_number | tonumber),
               head_sha: $head_sha,
               deterministic: {vmaas: $vmaas_clear, caas: $caas_clear, bmaas: $bmaas_clear},
               deterministic_files: {vmaas: $vmaas_clear_files, caas: $caas_clear_files, bmaas: $bmaas_clear_files},
               ambiguous_files: $ambiguous_files,
-              config_files: $config_files
+              config_files: $config_files,
+              netris_relevant_files: $netris_relevant_files
             }' > "${RUNNER_TEMP}/suite-selection-context/context.json"
           cat "${RUNNER_TEMP}/suite-selection-context/context.json"
 
