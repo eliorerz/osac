@@ -94,16 +94,29 @@ jobs:
     needs: guard
     if: success() && github.event.workflow_run.name == 'Container image'
     runs-on: ubuntu-latest
-    # contents: read to checkout; packages: write to push the chart to GHCR.
+    # contents: read to checkout; packages: write to push the chart to GHCR;
+    # id-token: write for cosign's keyless signing (this job only ever runs
+    # via workflow_run after a tag-triggered image build already succeeded,
+    # never on pull_request-controlled content).
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
       with:
         ref: ${{ needs.guard.outputs.sha }}
         fetch-depth: 0
         persist-credentials: false
+
+    - name: Verify tag still points at the guarded commit
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        TAG: ${{ needs.guard.outputs.tag }}
+        GUARDED_SHA: ${{ needs.guard.outputs.sha }}
+        REPO: ${{ github.repository }}
+      run: .github/scripts/fulfillment-service-verify-tag-matches-sha.sh
+
     - id: run
       working-directory: fulfillment-service
       env:
@@ -136,10 +149,16 @@ jobs:
         export chart_version="${git_version#v}"
         helm package charts/service --version "${chart_version}" --app-version "${app_version}"
 
-        # Push the chart to the registry:
-        export chart_name="$(yq -r '.name' charts/service/Chart.yaml)"
-        export chart_file="${chart_name}-${chart_version}.tgz"
-        helm push "${chart_file}" "oci://${registry}/${{ github.repository_owner }}/charts"
+        chart_name="$(yq -r '.name' charts/service/Chart.yaml)"
+        echo "chart-name=${chart_name}" >> "$GITHUB_OUTPUT"
+        echo "chart-file=fulfillment-service/${chart_name}-${chart_version}.tgz" >> "$GITHUB_OUTPUT"
+
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: ${{ steps.run.outputs.chart-file }}
+        chart-name: ${{ steps.run.outputs.chart-name }}
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   publish-operator-crds-chart:
     name: Publish osac-operator-crds chart
@@ -149,6 +168,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -188,11 +208,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: osac-operator
-      run: |
-        helm push osac-operator-crds-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: osac-operator/osac-operator-crds-${{ steps.version.outputs.version }}.tgz
+        chart-name: osac-operator-crds
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   publish-operator-chart:
     name: Publish osac-operator chart
@@ -202,6 +223,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -246,11 +268,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: osac-operator
-      run: |
-        helm push osac-operator-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: osac-operator/osac-operator-${{ steps.version.outputs.version }}.tgz
+        chart-name: osac-operator
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   create-operator-release:
     name: Create GitHub Release (osac-operator)
@@ -304,6 +327,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -369,11 +393,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: osac-aap
-      run: |
-        helm push osac-aap-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: osac-aap/osac-aap-${{ steps.version.outputs.version }}.tgz
+        chart-name: osac-aap
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
     - name: Verify tag still points at the guarded commit
       env:
@@ -407,6 +432,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -446,11 +472,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: bare-metal-fulfillment-operator
-      run: |
-        helm push bare-metal-fulfillment-operator-crds-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: bare-metal-fulfillment-operator/bare-metal-fulfillment-operator-crds-${{ steps.version.outputs.version }}.tgz
+        chart-name: bare-metal-fulfillment-operator-crds
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   publish-bmf-chart:
     name: Publish bare-metal-fulfillment-operator chart
@@ -460,6 +487,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -504,11 +532,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: bare-metal-fulfillment-operator
-      run: |
-        helm push bare-metal-fulfillment-operator-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: bare-metal-fulfillment-operator/bare-metal-fulfillment-operator-${{ steps.version.outputs.version }}.tgz
+        chart-name: bare-metal-fulfillment-operator
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   create-bmf-release:
     name: Create GitHub Release (bare-metal-fulfillment-operator)
@@ -556,6 +585,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -612,11 +642,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: osac-csi-driver
-      run: |
-        helm push csi-driver-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: osac-csi-driver/csi-driver-${{ steps.version.outputs.version }}.tgz
+        chart-name: csi-driver
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   publish-csi-backends-chart:
     name: Publish csi-backends chart
@@ -626,6 +657,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -665,11 +697,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: osac-csi-driver
-      run: |
-        helm push csi-backends-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: osac-csi-driver/csi-backends-${{ steps.version.outputs.version }}.tgz
+        chart-name: csi-backends
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   create-osac-csi-driver-release:
     name: Create GitHub Release (osac-csi-driver)
@@ -737,6 +770,7 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
     steps:
     - name: Checkout repository
       uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -813,11 +847,12 @@ jobs:
           --version "${{ steps.version.outputs.version }}" \
           --app-version "${{ steps.version.outputs.version }}"
 
-    - name: Push chart to GHCR
-      working-directory: osac-metering
-      run: |
-        helm push osac-metering-${{ steps.version.outputs.version }}.tgz \
-          oci://${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
+    - name: Push and sign chart
+      uses: ./.github/actions/helm-push-and-sign
+      with:
+        chart-file: osac-metering/osac-metering-${{ steps.version.outputs.version }}.tgz
+        chart-name: osac-metering
+        oci-repo: ${{ env.REGISTRY }}/${{ env.CHARTS_REPO }}
 
   create-metering-release:
     name: Create GitHub Release (osac-metering)

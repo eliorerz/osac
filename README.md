@@ -68,6 +68,39 @@ cosign verify \
   ghcr.io/osac-project/osac-operator@sha256:<digest>
 ```
 
+## Verifying Helm chart signatures
+
+Helm charts published to `oci://ghcr.io/osac-project/charts/*` are signed the
+same way. All charts built from this mono-repo's own components (everything
+except `osac`, the umbrella chart) are published by `publish-charts.yaml`,
+which only ever runs via `workflow_run` off the repository's default branch
+(`main`) — never a tag ref, regardless of which component's tag triggered the
+originating image build. `publish-osac-installer-chart.yaml` (the umbrella
+chart) is `workflow_dispatch`-only and normally also runs from `main`, but can
+be dispatched against one of the umbrella chart's own `osac/v*` tags.
+
+`helm pull`/`helm push` print the artifact's digest directly, so no extra
+tooling is needed to resolve it:
+
+```bash
+helm pull oci://ghcr.io/osac-project/charts/<chart-name> --version <version>
+# Digest: sha256:<digest>
+
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/osac-project/osac/\.github/workflows/publish-charts\.yaml@refs/heads/main$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/osac-project/charts/<chart-name>@sha256:<digest>
+```
+
+For the umbrella chart, accept either ref:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/osac-project/osac/\.github/workflows/publish-osac-installer-chart\.yaml@refs/(heads/main|tags/osac/.+)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/osac-project/charts/osac@sha256:<digest>
+```
+
 Always verify by digest (`@sha256:...`), not by mutable tag — resolve a tag to
 its digest first with `skopeo inspect docker://ghcr.io/osac-project/<component>:<tag>`
 if needed. Images pushed to `quay.io/redhat-user-workloads/osac-tenant/...` via
