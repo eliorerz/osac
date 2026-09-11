@@ -29,6 +29,51 @@ conventions content that doesn't belong in any single component's docs (not to b
 with the external [osac-project/docs](https://github.com/osac-project/docs) repo, which
 covers broader project-level architecture guides and diagrams).
 
+## Verifying container image signatures
+
+Container images published to `ghcr.io/osac-project/*` from this repo's GitHub
+Actions workflows are signed keylessly with [cosign](https://docs.sigstore.dev/),
+using each workflow run's GitHub Actions OIDC identity via Fulcio/Rekor — no
+long-lived private key is involved. Images are signed both from ordinary
+pushes to `main` and from component-scoped release tags; the certificate
+identity's workflow filename and ref reflect whichever build produced the
+image, so pin both rather than accepting any workflow or any tag in this repo:
+
+| Component (+ manifest image, where built) | Image                                 | Workflow file                             | Release tag prefix                |
+|--------------------------------------------|----------------------------------------|---------------------------------------------|------------------------------------|
+| osac-operator                               | `osac-project/osac-operator`           | `build-image.yaml`                          | `osac-operator`                    |
+| fulfillment-service                         | `osac-project/fulfillment-service`     | `publish-image.yaml`                        | `fulfillment-service`              |
+| bare-metal-fulfillment-operator             | `osac-project/bare-metal-fulfillment-operator` | `build-bmf-image.yaml`              | `bare-metal-fulfillment-operator`  |
+| osac-aap                                    | `osac-project/osac-aap`                | `execution-environment.yml`                 | `osac-aap`                         |
+| metering-service                            | `osac-project/metering-service`        | `build-metering-service-image.yaml`         | `osac-metering`                    |
+| metering-m360-adapter                       | `osac-project/metering-m360-adapter`   | `build-metering-m360-adapter-image.yaml`    | `osac-metering`                    |
+| metering-echo-adapter                       | `osac-project/metering-echo-adapter`   | `build-metering-echo-adapter-image.yaml`    | `osac-metering`                    |
+| osac-csi-driver                             | `osac-project/osac-csi-driver`         | `publish-csi-driver-image.yaml`             | `osac-csi-driver`                  |
+
+Verify an image, substituting the workflow file and tag prefix from the table above:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/osac-project/osac/\.github/workflows/<workflow-file>@refs/(heads/main|tags/<tag-prefix>/.+)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/<image>@sha256:<digest>
+```
+
+For example, to verify an osac-operator image:
+
+```bash
+cosign verify \
+  --certificate-identity-regexp '^https://github\.com/osac-project/osac/\.github/workflows/build-image\.yaml@refs/(heads/main|tags/osac-operator/.+)$' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/osac-project/osac-operator@sha256:<digest>
+```
+
+Always verify by digest (`@sha256:...`), not by mutable tag — resolve a tag to
+its digest first with `skopeo inspect docker://ghcr.io/osac-project/<component>:<tag>`
+if needed. Images pushed to `quay.io/redhat-user-workloads/osac-tenant/...` via
+Konflux are signed separately by Konflux's own Enterprise Contract pipeline;
+see that pipeline's documentation for verifying those instead.
+
 ## Local development with go.work
 
 The root [`go.work`](go.work) file wires all Go modules in the mono-repo —

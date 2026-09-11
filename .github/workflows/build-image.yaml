@@ -106,6 +106,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+    outputs:
+      operator-digest: ${{ steps.build-operator.outputs.digest }}
+      manifest-digest: ${{ steps.build-manifests.outputs.digest }}
 
     steps:
       - name: Checkout repository
@@ -240,6 +243,7 @@ jobs:
 
       # Build and push manifest container
       - name: Build and push manifest container
+        id: build-manifests
         if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7
         with:
@@ -248,3 +252,38 @@ jobs:
           push: true
           tags: ${{ steps.meta-manifests.outputs.tags }}
           labels: ${{ steps.meta-manifests.outputs.labels }}
+
+  # Signing gets its own job, granted id-token: write only here, rather than
+  # on `build` -- `build` also runs (build-only, no push) on pull_request and
+  # merge_group with PR-controlled Containerfile/build context, so it must
+  # never hold the OIDC permission that mints Fulcio signing certs.
+  sign:
+    needs: build
+    if: github.event_name != 'pull_request' && github.event_name != 'merge_group'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Log into registry ${{ env.REGISTRY }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f  # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Sign image with cosign
+        uses: ./.github/actions/cosign-sign-image
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.operator-digest }}
+
+      - name: Sign manifest container with cosign
+        uses: ./.github/actions/cosign-sign-image
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ needs.build.outputs.manifest-digest }}
