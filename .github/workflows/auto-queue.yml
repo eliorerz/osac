@@ -144,7 +144,12 @@ jobs:
           GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
-        run: gh pr merge "$PR" --repo "$REPO" --auto --rebase
+        # No explicit strategy: the merge_queue ruleset on main already fixes
+        # the method (SQUASH). Passing --rebase here fails outright once a PR
+        # already has auto-merge enabled ("the merge strategy for main is set
+        # by the merge queue") -- harmless on first enable, but breaks the
+        # re-enable path used by requeue-eligible-prs below.
+        run: gh pr merge "$PR" --repo "$REPO" --auto
 
       - name: Disable auto-merge
         if: >-
@@ -222,6 +227,97 @@ jobs:
             fi
 
             echo "Re-enabling auto-merge on PR #$pr"
-            gh pr merge "$pr" --repo "${REPO}" --auto --rebase
+            gh pr merge "$pr" --repo "${REPO}" --auto
+          done
+          echo "Scan complete."
+
+      # A PR can have auto-merge enabled and be fully green (mergeStateStatus
+      # CLEAN) yet never actually be sitting in the merge queue: GitHub only
+      # enqueues on specific triggers (new commit, review, label, or the
+      # enable-auto-merge call above), not on a passive change to *why* the
+      # PR became mergeable -- e.g. a branch-protection/ruleset update that
+      # drops a stale required check. The step above skips these PRs entirely
+      # (autoMergeRequest is already set), so they'd otherwise sit stuck
+      # indefinitely with no automation able to notice. Force them in
+      # directly via the enqueuePullRequest mutation, the same call GitHub's
+      # own "Merge when ready" button makes.
+      - name: Enqueue CLEAN PRs whose auto-merge never actually queued
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_TOKEN:-}" ]]; then
+            echo "MERGE_QUEUE_TOKEN missing"
+            exit 1
+          fi
+          echo "Scanning CLEAN PRs with auto-merge already enabled..."
+          # mergeStateStatus alone is not enough: required_approving_review_count
+          # is 0 on this repo's pull_request ruleset rule, so CLEAN says nothing
+          # about outstanding human review state or do-not-merge/* labels --
+          # those are enforced only by this bot's own reactive logic elsewhere
+          # in this file (the enable-auto-merge job's Disable-auto-merge step),
+          # which could in principle miss an event. Reapply the same label and
+          # review checks used by the other two paths above before force-queueing.
+          prs=$(gh pr list --repo "${REPO}" --state open --limit 200 \
+            --json number,id,isDraft,mergeable,mergeStateStatus,autoMergeRequest,labels --jq '
+            [.[] | select(
+              .isDraft == false
+              and .autoMergeRequest != null
+              and .mergeable == "MERGEABLE"
+              and .mergeStateStatus == "CLEAN"
+              and ([.labels[].name] | contains(["lgtm","approved","jira/valid-reference"]))
+              and ([.labels[].name] | any(. == "do-not-merge/hold" or . == "do-not-merge/work-in-progress" or . == "do-not-merge/invalid-owners-file" or . == "needs-rebase") | not)
+            ) | {number, id}]')
+          echo "CLEAN with auto-merge already on, past label checks: $(echo "$prs" | jq -c '[.[].number]')"
+          echo "$prs" | jq -c '.[]' | while read -r pr; do
+            number=$(jq -r '.number' <<<"$pr")
+            id=$(jq -r '.id' <<<"$pr")
+
+            reviews=$(gh api --paginate --slurp "repos/${REPO}/pulls/${number}/reviews" | jq 'add // []')
+            set +e
+            jq -e '
+              [.[]
+                | select(.user != null)
+                | select(((.user.login // "") | endswith("[bot]")) | not)
+                | select((.user.type // "User") != "Bot")
+                | select(.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED")
+              ]
+              | group_by(.user.login)
+              | map(max_by([(.submitted_at // ""), (.id // 0)]))
+              | map(select(.state == "CHANGES_REQUESTED"))
+              | length > 0
+            ' <<<"${reviews}" >/dev/null
+            rc=$?
+            set -e
+            if [[ ${rc} -eq 0 ]]; then
+              echo "Skipping PR #${number}: human CHANGES_REQUESTED still outstanding"
+              continue
+            elif [[ ${rc} -ne 1 ]]; then
+              echo "Skipping PR #${number}: cannot evaluate human review state (jq rc=${rc})"
+              continue
+            fi
+
+            if ! already_queued=$(gh api graphql -f query='
+              query($id: ID!) {
+                node(id: $id) {
+                  ... on PullRequest {
+                    mergeQueueEntry { id }
+                  }
+                }
+              }' -f id="$id" --jq '.data.node.mergeQueueEntry != null' 2>&1); then
+              echo "Failed to check merge-queue status for PR #${number}, skipping this run: ${already_queued}"
+              continue
+            fi
+            if [[ "${already_queued}" == "true" ]]; then
+              continue
+            fi
+            echo "PR #${number} is CLEAN with auto-merge on but not queued -- enqueuing"
+            gh api graphql -f query='
+              mutation($id: ID!) {
+                enqueuePullRequest(input: {pullRequestId: $id}) {
+                  mergeQueueEntry { position state }
+                }
+              }' -f id="$id" || echo "Failed to enqueue PR #${number}, will retry next run"
           done
           echo "Scan complete."
