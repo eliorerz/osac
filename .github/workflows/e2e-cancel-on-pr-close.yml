@@ -12,7 +12,35 @@ on:
     branches: [main]
 
 jobs:
+  # Re-check live PR state before cleanup runs: pull_request_target's event
+  # payload reflects state at trigger time, and a queued/delayed run could
+  # fire after the PR was reopened -- cancelling e2e work or dismissing gate
+  # checks a reopened PR still needs. Cheap guard, no side effects of its own.
+  guard:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
+    outputs:
+      still-closed: ${{ steps.check.outputs.still-closed }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          set -euo pipefail
+          state=$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" --jq '.state')
+          if [[ "${state}" == "closed" ]]; then
+            echo "still-closed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "PR #${PR_NUMBER} is ${state}, not closed anymore; skipping cleanup."
+            echo "still-closed=false" >> "$GITHUB_OUTPUT"
+          fi
+
   cancel-in-flight-runs:
+    needs: guard
+    if: needs.guard.outputs.still-closed == 'true'
     runs-on: ubuntu-latest
     permissions:
       actions: write
@@ -34,6 +62,8 @@ jobs:
         run: bash .github/scripts/cancel-stale-e2e-runs.sh
 
   dismiss-orphan-gates:
+    needs: guard
+    if: needs.guard.outputs.still-closed == 'true'
     runs-on: ubuntu-latest
     permissions:
       checks: write

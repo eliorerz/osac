@@ -21,6 +21,15 @@ if [[ -z "${REPO:-}" || -z "${HEAD_SHA:-}" || -z "${HEAD_BRANCH:-}" || -z "${HEA
   exit 1
 fi
 
+# CANCEL_ALL drops the "differs from HEAD_SHA" scoping below, so it leans on
+# repo+branch alone to identify "this PR's runs" -- not enough on its own if a
+# branch name is ever reused across PRs (delete-and-recreate, or a stale run
+# from a previous close/reopen cycle). Require an exact PR_NUMBER match too.
+if [[ "${CANCEL_ALL}" == "true" && -z "${PR_NUMBER:-}" ]]; then
+  echo "PR_NUMBER is required when CANCEL_ALL=true" >&2
+  exit 1
+fi
+
 # Return 0 when PR head still matches HEAD_SHA; 1 when moved or lookup failed.
 # Always 0 in CANCEL_ALL mode: a closed PR's head won't move, and there's no
 # newer push for this cleanup to defer to.
@@ -76,10 +85,13 @@ for status in in_progress queued waiting pending requested; do
       echo "Could not cancel run #${id}" >&2
       failed=1
     fi
-  done < <(jq -r --arg head "${HEAD_SHA}" --arg repo "${HEAD_REPO}" --argjson names "${E2E_NAMES}" --argjson all "$([[ "${CANCEL_ALL}" == "true" ]] && echo true || echo false)" '
+  done < <(jq -r --arg head "${HEAD_SHA}" --arg repo "${HEAD_REPO}" --argjson names "${E2E_NAMES}" \
+    --argjson all "$([[ "${CANCEL_ALL}" == "true" ]] && echo true || echo false)" \
+    --argjson pr "${PR_NUMBER:-0}" '
     .[] | select(
       .head_repository.full_name == $repo
       and ($all or .head_sha != $head)
+      and (if $all then ((.pull_requests // []) | any(.number == $pr)) else true end)
       and (.name as $n | $names | index($n))
     ) | "\(.id)\t\(.name)\t\(.head_sha)"
   ' <<<"${runs}")
