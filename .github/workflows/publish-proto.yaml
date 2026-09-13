@@ -42,4 +42,12 @@ jobs:
       run: |
         # Strip this component's tag prefix (see the `tags:` trigger above) so the
         # label reads as a plain version, not the full scoped git tag.
-        buf push --label "${GITHUB_REF_NAME#fulfillment-service/}"
+        #
+        # --create: buf.build/osac-project/tests (proto/buf.yaml's third
+        # module) was never provisioned on the BSR, so every push has been
+        # failing with "repository ... was not found" since at least
+        # fulfillment-service/v0.0.95. --create is a no-op once a module
+        # exists, so this also self-heals any future new module the same way
+        # -- private by default (no --create-visibility) since these are
+        # internal test-fixture types, not a published API surface.
+        buf push --create --label "${GITHUB_REF_NAME#fulfillment-service/}"
