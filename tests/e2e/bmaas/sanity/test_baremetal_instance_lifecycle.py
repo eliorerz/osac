@@ -93,6 +93,12 @@ def test_baremetal_instance_lifecycle(
     test_run_id: str,
     ssh_public_key: str,
 ) -> None:
+    assert False, (
+        "DUMMY FAILURE (NO-ISSUE) -- intentional break to exercise the AI "
+        "diagnostic pipeline end-to-end (Reserve -> Running -> diagnosis), "
+        "placed before any real resource creation. Not a real regression; "
+        "revert this line before merging."
+    )
     name = f"e2e-bmi-{test_run_id}"
     bmi_id: str = cli.create_baremetal_instance(name=name, catalog_item=catalog_item, ssh_key=ssh_public_key)
     bmh_ns = ""
