@@ -712,6 +712,52 @@ jobs:
         digest=$(skopeo inspect "docker://${{ steps.build.outputs.image-ref }}" | jq -r '.Digest')
         cosign sign --yes "${{ matrix.image }}@${digest}"
 
+    # OSAC CLI (fulfillment-service/cmd/osac) built here too -- for tests
+    # and local development, not as the official cross-platform release
+    # (that's still publish-binaries.yaml, goreleaser, triggered by a real
+    # fulfillment-service/vX.Y.Z tag push -- unaffected by this). Folded
+    # into fulfillment-service's own build step rather than a separate
+    # workflow/trigger: a fresh CLI binary comes for free from every
+    # nightly run and every release that actually rebuilds
+    # fulfillment-service, with no extra mechanism to keep in sync.
+    - name: Set up Go for OSAC CLI build
+      if: matrix.name == 'fulfillment-service' && steps.resolve.outputs.skip != 'true'
+      uses: ./.github/actions/setup-go
+      with:
+        working-directory: fulfillment-service
+
+    - name: Build OSAC CLI (linux/amd64)
+      if: matrix.name == 'fulfillment-service' && steps.resolve.outputs.skip != 'true'
+      working-directory: fulfillment-service
+      env:
+        VERSION: ${{ steps.resolve.outputs.version }}
+      run: |
+        set -euo pipefail
+        CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
+          -ldflags "-X github.com/osac-project/osac/fulfillment-service/internal/version.id=${VERSION}" \
+          -o osac-cli-linux-amd64 ./cmd/osac
+
+    # Same cosign sign-blob + --bundle flow goreleaser's own signs: config
+    # uses for the official cross-platform release (see
+    # fulfillment-service/.goreleaser.yaml) -- keyless, same Fulcio/Rekor
+    # OIDC flow as every other artifact this pipeline signs.
+    - name: Sign OSAC CLI with cosign
+      if: matrix.name == 'fulfillment-service' && steps.resolve.outputs.skip != 'true'
+      working-directory: fulfillment-service
+      run: |
+        set -euo pipefail
+        cosign sign-blob --yes --bundle osac-cli-linux-amd64.sigstore.json osac-cli-linux-amd64
+
+    - name: Upload OSAC CLI artifact
+      if: matrix.name == 'fulfillment-service' && steps.resolve.outputs.skip != 'true'
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+      with:
+        name: osac-cli-linux-amd64-${{ steps.resolve.outputs.version }}
+        path: |
+          fulfillment-service/osac-cli-linux-amd64
+          fulfillment-service/osac-cli-linux-amd64.sigstore.json
+        retention-days: 14
+
   # -------------------------------------------------------------------
   # Job 3: Code quality — unit tests, integration tests, and CodeQL SAST
   # as three independent parallel boxes. These test source code directly
