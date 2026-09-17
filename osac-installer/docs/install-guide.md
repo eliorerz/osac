@@ -52,9 +52,9 @@ store.
 ### 1.1 What is released
 
 The OSAC platform chart (phase 2) is published as an OCI artifact at
-`oci://ghcr.io/osac-project/charts/osac`. The latest tagged release is `0.0.8`,
-and a rolling `0.0.9-nightly.*` channel is also available. The chart includes a
-`values.schema.json` file and a `values-example.yaml` file.
+`oci://ghcr.io/osac-project/charts/osac`. The latest tagged release is
+`0.0.17`, and a rolling `0.0.9-nightly.*` channel is also available. The chart
+includes a `values.schema.json` file and a `values-example.yaml` file.
 
 The `osac-deps` and `osac-infra` prerequisite charts (phase 1) are not
 published. You install them with Helm from a local clone of the monorepo, or
@@ -125,7 +125,8 @@ toggles and values to set.
   [Updating the global cluster pull secret](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/images/managing-images).
 - The cluster has egress to `github.com` and `ghcr.io` for the OSAC images and
   the `osac-ui` OCI chart, to `quay.io` for Keycloak, its PostgreSQL,
-  trust-manager, and the `origin-cli` hook image, and to the Red Hat registries.
+  trust-manager, and the `origin-cli` hook image, and to `registry.redhat.io`
+  for the Red Hat Operator catalogs and operands.
 - The command
   `oc get ingresses.config/cluster -o jsonpath='{.spec.domain}'` returns your
   apps domain. The installation derives all route host names from it.
@@ -285,7 +286,7 @@ that channel resolved to on OpenShift Container Platform 4.22.6 in September
 | Component | Channel or fixed version | Observed on OCP 4.22.6 | Defined in |
 |---|---|---|---|
 | OpenShift Container Platform | `stable-4.22` | 4.22.4 to 4.22.6 | Validated range |
-| `osac` umbrella chart | `0.0.8` released; `0.0.9-nightly.*` rolling | `0.0.8` | `oci://ghcr.io/osac-project/charts/osac` |
+| `osac` umbrella chart | `0.0.17` released; `0.0.9-nightly.*` rolling | `0.0.17` | `oci://ghcr.io/osac-project/charts/osac` |
 | cert-manager Operator for Red Hat OpenShift | `stable-v1` | `v1.20.0` | `charts/osac-deps/values.yaml` |
 | Red Hat Ansible Automation Platform | `stable-2.6-cluster-scoped` | `v2.6.0` | `charts/osac-deps/values.yaml` |
 | LVM Storage | `stable-<cluster_minor>` | `v4.22.0` | `charts/osac-deps/values.yaml` |
@@ -297,12 +298,12 @@ that channel resolved to on OpenShift Container Platform 4.22.6 in September
 | Envoy (Fulfillment Service sidecar) | `v1.33.0` (fixed) | `v1.33.0` | `values/*/instance.yaml` |
 | OpenBao (bundled secret store) | `2.6.2` (fixed) | `2.6.2` | `charts/osac/values.yaml` |
 | Keycloak (bundled) | Not applicable | `26.6.4` | `charts/osac-infra/` |
-| OSAC web console chart | `0.0.6` at `HEAD`; `0.0.5` in release `0.0.8` | Not applicable | `charts/osac/Chart.yaml` |
+| OSAC web console chart | `0.0.6`, pinned at `HEAD` and in release `0.0.17` | Not applicable | `charts/osac/Chart.yaml` |
 | PostgreSQL | 18 or later | `18` (Keycloak database) | `fulfillment-service/docs/INSTALL.md` |
 
-The `osac` chart release `0.0.8` pins its subcharts to `osac-operator-crds`
-`0.0.10`, `osac-operator` `0.0.10`, `fulfillment-service` `0.0.79`, `osac-aap`
-`0.0.11`, `bare-metal-fulfillment-operator` `0.0.10`, and `osac-ui` `0.0.5`
+The `osac` chart release `0.0.17` pins its subcharts to `osac-operator-crds`
+`0.0.14`, `osac-operator` `0.0.14`, `fulfillment-service` `0.0.107`, `osac-aap`
+`0.0.15`, `bare-metal-fulfillment-operator` `0.0.14`, and `osac-ui` `0.0.6`
 through its `Chart.lock` file.
 
 A tagged release pins every subchart and image to a specific version. The
@@ -328,6 +329,8 @@ Perform this procedure for both routes.
 **Prerequisites**
 
 - You are logged in to the cluster as a user with `cluster-admin` privileges.
+- The cluster pull secret is in place. See
+  [Section 2.1](#21-cluster-and-access).
 - You have the AAP subscription manifest file (`license.zip`).
 - For a production deployment, your external PostgreSQL database is running and
   reachable from the cluster.
@@ -392,7 +395,7 @@ you also create a values file for `osac-deps` and `osac-infra`,
 1. Retrieve the full set of value keys from the chart:
 
    ```console
-   $ helm show values oci://ghcr.io/osac-project/charts/osac --version 0.0.8 > values-upstream.yaml
+   $ helm show values oci://ghcr.io/osac-project/charts/osac --version 0.0.17 > values-upstream.yaml
    ```
 
 2. Create `my-values.yaml` for the `osac` chart. Base it on the Production
@@ -467,7 +470,7 @@ Use this procedure when the cluster already meets the prerequisites.
 - Install the `osac` chart by running the following command:
 
   ```console
-  $ helm install osac oci://ghcr.io/osac-project/charts/osac --version 0.0.8 \
+  $ helm install osac oci://ghcr.io/osac-project/charts/osac --version 0.0.17 \
       -n "$NS" --create-namespace \
       -f my-values.yaml \
       --set global.clusterDomain="$DOMAIN" \
@@ -498,11 +501,15 @@ infrastructure layer.
 
 **Procedure**
 
-1. Clone the repository and resolve the chart dependencies:
+1. Clone the repository, check out a tagged release, and resolve the chart
+   dependencies. Installing from `HEAD` skips the phase-compatibility testing
+   that a tagged release gets:
 
    ```console
    $ git clone https://github.com/osac-project/osac.git
-   $ cd osac/osac-installer
+   $ cd osac
+   $ git checkout osac/v0.0.17
+   $ cd osac-installer
    $ helm dependency build ./charts/osac
    ```
 
@@ -600,7 +607,8 @@ Route A.
   `lvms.enabled` skips an `LVMCluster` custom resource that uses device class
   `vg1`, thin pool size 90 percent, and overprovision ratio 10. Disabling
   `metallb.enabled` skips an `IPAddressPool` custom resource named
-  `caas-address-pool` with the fixed range `192.0.2.240` to `192.0.2.250`. If
+  `caas-address-pool` with the fixed range `192.168.100.240` to
+  `192.168.100.250`. If
   you already run the Operator, keep the toggle `false` and create your own
   operand. Edit the `IPAddressPool` after installation to use an address range
   that is valid for your network.
@@ -651,7 +659,7 @@ complete set, run the following command, and review
 chart `values.schema.json` file:
 
 ```console
-$ helm show values oci://ghcr.io/osac-project/charts/osac --version 0.0.8
+$ helm show values oci://ghcr.io/osac-project/charts/osac --version 0.0.17
 ```
 
 ### 6.1 Phase-1 parameters
@@ -882,6 +890,7 @@ prerequisite is already on the cluster, set its phase-1 toggle to `false`. See
    global:
      services: { vmaas: { enabled: true }, caas: { enabled: false }, bmaas: { enabled: false }, maas: { enabled: false } }
    csiDriver: { enabled: true }
+   lvms: { enabled: true }
    operator:
      networkManagers:
        k8sManagers:
@@ -893,6 +902,11 @@ prerequisite is already on the cluster, set its phase-1 toggle to `false`. See
      instanceGroups:
        publishTemplates: { enabled: false }
    ```
+
+   `lvms: { enabled: true }` runs the `osac` chart's `register-local-storage`
+   hook, which creates the `local` `StorageBackend` and `StorageTier` that the
+   first `ComputeInstance` needs. Without it, provisioning fails with an empty
+   `storage_tier_definitions` even though every pod looks healthy.
 
 3. Add the `service.*`, `aap.configAsCode.*`, Keycloak hardening, and database
    Secret settings from [Section 4.2](#42-configuring-the-helm-values).
@@ -1135,6 +1149,7 @@ full variable reference, see [`network-backend.md`](network-backend.md).
    ```yaml
    global:
      services: { bmaas: { enabled: true }, vmaas: { enabled: false }, caas: { enabled: false }, maas: { enabled: false } }
+   lvms: { enabled: true }
    operator:
      controllers: { networkingProvisioning: false }
    bmf:
@@ -1152,7 +1167,9 @@ full variable reference, see [`network-backend.md`](network-backend.md).
    ```
 
    Set `bmf.metal3.namespace` to the namespace where your `BareMetalHost`
-   resources live.
+   resources live. `lvms: { enabled: true }` is required here for the same
+   reason as [Section 7.1](#71-installing-osac-for-vmaas): without it, the
+   first provision fails with an empty `storage_tier_definitions`.
 
 3. Install by using Route A or Route B.
 
@@ -1215,11 +1232,17 @@ passed. If a step fails, see [Section 12](#12-troubleshooting).
    $ oc get bundle -n cert-manager
    ```
 
-5. Check the infrastructure layer and Keycloak. The `keycloak-service` and
-   `keycloak-database` pods must be `Running`.
+5. Check the infrastructure layer:
 
    ```console
    $ oc get pods -n osac-infra
+   ```
+
+   If `keycloak.enabled` is `true`, also check that the `keycloak-service` and
+   `keycloak-database` pods are `Running`. Skip this check for an external
+   Keycloak.
+
+   ```console
    $ oc get pods -n keycloak
    ```
 
@@ -1355,10 +1378,13 @@ and [`../OSAC-CLI-HOWTO.md`](../OSAC-CLI-HOWTO.md).
        --token-script "oc create token fulfillment-controller -n <namespace> --duration 1h"
    ```
 
-2. Generate the hub-access kubeconfig file:
+2. Generate the hub-access kubeconfig file. On Route B, the checkout already
+   has this script. On Route A, download it first:
 
    ```console
-   $ ./scripts/create-hub-access-kubeconfig.sh
+   $ curl -sO https://raw.githubusercontent.com/osac-project/osac/refs/tags/osac/v0.0.17/osac-installer/scripts/create-hub-access-kubeconfig.sh
+   $ chmod +x create-hub-access-kubeconfig.sh
+   $ ./create-hub-access-kubeconfig.sh
    ```
 
 3. Register the hub:
@@ -1386,7 +1412,7 @@ the token.
 
 - Deployment onto an existing OpenShift Container Platform cluster with
   `cluster-admin` privileges.
-- The published `osac` chart at a tagged release, such as `0.0.8`. The chart
+- The published `osac` chart at a tagged release, such as `0.0.17`. The chart
   `values-example.yaml` file documents the Production block: an external
   PostgreSQL database, an external Keycloak, and pinned image tags.
 - Prerequisite Operators installed by `osac-deps` on Route B, or pre-existing
@@ -1525,7 +1551,7 @@ subcharts require a full checkout. A `not found` error on
 `--version` value. To list the tags, run the following command:
 
 ```console
-$ helm show chart oci://ghcr.io/osac-project/charts/osac --version 0.0.8
+$ helm show chart oci://ghcr.io/osac-project/charts/osac --version 0.0.17
 ```
 
 ### 12.5 The `osac-db-init` hook fails
