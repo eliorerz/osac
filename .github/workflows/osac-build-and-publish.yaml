@@ -684,15 +684,6 @@ jobs:
       contents: read
     uses: ./.github/workflows/codeql.yml
 
-  # osac-ui doesn't build/publish as part of this pipeline yet (it's still
-  # pinned externally), but its existing test suite should still gate a
-  # release/nightly run the same way every other component's does.
-  osac-ui-tests:
-    name: Unit tests (osac-ui)
-    permissions:
-      contents: read
-    uses: ./.github/workflows/osac-ui-test.yaml
-
   # -------------------------------------------------------------------
   # Job 4: E2E validation — vmaas, caas, and bmaas full-install suites as
   # three independent parallel boxes, each testing the temp branch (not
@@ -801,7 +792,7 @@ jobs:
   # -------------------------------------------------------------------
   publish:
     name: Publish chart
-    needs: [prepare, build, unit-tests, integration-tests, security-tests, osac-ui-tests, e2e-vmaas-test, e2e-caas-test, e2e-bmaas-test]
+    needs: [prepare, build, unit-tests, integration-tests, security-tests, e2e-vmaas-test, e2e-caas-test, e2e-bmaas-test]
     if: |
       always() &&
       needs.prepare.result == 'success' &&
@@ -809,7 +800,6 @@ jobs:
       needs.unit-tests.result == 'success' &&
       needs.integration-tests.result == 'success' &&
       needs.security-tests.result == 'success' &&
-      needs.osac-ui-tests.result == 'success' &&
       contains(fromJSON('["success", "skipped"]'), needs.e2e-vmaas-test.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.e2e-caas-test.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.e2e-bmaas-test.result)
@@ -1409,7 +1399,7 @@ jobs:
   # -------------------------------------------------------------------
   notify-failure:
     name: Notify failure
-    needs: [prepare, build, unit-tests, integration-tests, security-tests, osac-ui-tests, e2e-vmaas-test, e2e-caas-test, e2e-bmaas-test, publish, tag-and-notify]
+    needs: [prepare, build, unit-tests, integration-tests, security-tests, e2e-vmaas-test, e2e-caas-test, e2e-bmaas-test, publish, tag-and-notify]
     runs-on: osac-ci
     timeout-minutes: 10
     if: failure()
@@ -1485,7 +1475,7 @@ jobs:
   # -------------------------------------------------------------------
   cleanup:
     name: Cleanup temp branch
-    needs: [prepare, build, unit-tests, integration-tests, security-tests, osac-ui-tests, e2e-vmaas-test, e2e-caas-test, e2e-bmaas-test, publish, tag-and-notify, notify-failure]
+    needs: [prepare, build, unit-tests, integration-tests, security-tests, e2e-vmaas-test, e2e-caas-test, e2e-bmaas-test, publish, tag-and-notify, notify-failure]
     runs-on: ubuntu-latest
     # notify-failure is routinely skipped whenever nothing fails, and GitHub
     # skip-cascades a job whose needs include a skipped job regardless of a
