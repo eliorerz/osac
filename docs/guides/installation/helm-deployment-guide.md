@@ -95,9 +95,10 @@ run the three phases directly:
 export NS=osac
 export DOMAIN=$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')
 export OCP_VERSION=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' | cut -d. -f1,2)
+export AAP_LICENSE_FILE=/path/to/license.zip
 
 oc create namespace "$NS" --dry-run=client -o yaml | oc apply -f -
-oc create secret generic config-as-code-manifest-ig --from-file=license.zip=/path/to/license.zip -n "$NS" --dry-run=client -o yaml | oc apply --server-side -f -
+oc create secret generic config-as-code-manifest-ig --from-file=license.zip="$AAP_LICENSE_FILE" -n "$NS" --dry-run=client -o yaml | oc apply --server-side -f -
 oc label secret config-as-code-manifest-ig osac.openshift.io/project=osac-aap -n "$NS" --overwrite
 
 # Phase 1a: prerequisite Operator Subscriptions
@@ -106,7 +107,16 @@ helm upgrade --install osac-deps ./charts/osac-deps \
     -f my-infra-values.yaml \
     --set lvms.channel="stable-$OCP_VERSION" \
     --wait --timeout 30m
+```
 
+To check a specific Operator, for example LVMS:
+
+```bash
+oc get csv -n openshift-storage lvms-operator.v4.22.0
+oc get sub lvms-operator -n openshift-storage -o jsonpath='channel={.spec.channel} state={.status.state}{"\n"}'
+```
+
+```bash
 # Phase 1b: CA issuer, trust-manager, Keycloak, and operand CRs
 helm upgrade --install osac-infra ./charts/osac-infra \
     -n osac-infra --create-namespace \
@@ -118,6 +128,7 @@ helm upgrade --install osac-infra ./charts/osac-infra \
     --wait-for-jobs --timeout 30m
 
 # Phase 2: the OSAC platform itself
+helm dependency update ./charts/osac
 helm upgrade --install osac ./charts/osac \
     -n "$NS" --create-namespace \
     -f my-values.yaml \
