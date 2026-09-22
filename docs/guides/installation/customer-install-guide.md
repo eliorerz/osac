@@ -518,8 +518,8 @@ subchart `values.yaml` file.
 | `aap.configAsCode.secret` | Secret with config-as-code runtime flags. |
 | `aap.configAsCode.projectGitUri`, `aap.configAsCode.projectGitBranch` | Git source for the Ansible content that the bootstrap job imports. |
 | `aap.configAsCode.importAgentsEnabled`, `aap.configAsCode.importBcmAgentsEnabled` | Enable bare-metal agent import and the BCM inventory backend. |
-| `aap.instanceGroups.clusterFulfillment.enabled`, `aap.instanceGroups.clusterFulfillment.config`, `aap.instanceGroups.clusterFulfillment.secret` | The `cluster-fulfillment` instance group for CaaS provisioning. See [Section 6.2](#62-installing-osac-for-caas-with-esi-being-retired) and [Section 6.3](#63-installing-osac-for-caas-with-the-netris-network-backend). |
-| `aap.instanceGroups.networkFulfillment.enabled`, `aap.instanceGroups.networkFulfillment.config`, `aap.instanceGroups.networkFulfillment.secret` | The `network-fulfillment` instance group for Netris. See [Section 6.3](#63-installing-osac-for-caas-with-the-netris-network-backend). |
+| `aap.instanceGroups.clusterFulfillment.enabled`, `aap.instanceGroups.clusterFulfillment.config`, `aap.instanceGroups.clusterFulfillment.secret` | The `cluster-fulfillment` instance group for CaaS provisioning. See [Section 6.2](#62-installing-osac-for-caas-with-the-netris-network-backend). |
+| `aap.instanceGroups.networkFulfillment.enabled`, `aap.instanceGroups.networkFulfillment.config`, `aap.instanceGroups.networkFulfillment.secret` | The `network-fulfillment` instance group for Netris. See [Section 6.2](#62-installing-osac-for-caas-with-the-netris-network-backend). |
 | `aap.instanceGroups.storageFulfillment.config.STORAGE_SNAPSHOTS_ENABLED`, `aap.instanceGroups.storageFulfillment.secret.VAST_ENDPOINT`, `aap.instanceGroups.storageFulfillment.secret.VAST_USERNAME`, `aap.instanceGroups.storageFulfillment.secret.VAST_PASSWORD` | The `storage-operations` instance group: snapshot toggle and VAST management credentials. |
 | `aap.instanceGroups.publishTemplates.enabled` | Runs the postinstallation `osac-publish-templates` hook. Default `true`. Set it to `false` for VMaaS-only or BMaaS-only installations. |
 | `aap.instanceGroups.publishTemplates.config.OSAC_TEMPLATE_COLLECTIONS`, `aap.instanceGroups.publishTemplates.config.OSAC_FULFILLMENT_SERVICE_URI` | The Ansible collections to publish and the internal Fulfillment Service URI. |
@@ -630,19 +630,11 @@ the cluster. Then follow [Section 4](#4-installing-osac).
   $ oc get computeinstance -A
   ```
 
-### 6.2 Installing OSAC for CaaS with ESI (being retired)
-
-> **Warning**
->
-> ESI is being retired as a network backend — `osac-project/osac#887`
-> removes `esi` from the `NETWORK_CLASS` schema enum, and OSAC's networking
-> team no longer recommends it for new deployments. Use
-> [Section 6.3](#63-installing-osac-for-caas-with-the-netris-network-backend)
-> (Netris) instead. This section is kept only for clusters that already run
-> on ESI.
+### 6.2 Installing OSAC for CaaS with the Netris network backend
 
 The AWS Route 53 DNS backend is the default; it's independent of the network
-backend.
+backend. For the full variable reference, see
+[`network-backend.md`](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md).
 
 **Prerequisites**
 
@@ -650,12 +642,15 @@ backend.
 - MetalLB (or another `LoadBalancer`-class implementation) and LVM Storage
   (or another dynamic storage class) are installed.
 - You have AWS Route 53 credentials for the target hosted zone.
+- Access to the Netris controller: URL, user name, password, site and tenant
+  IDs, and management VPC details.
+- SSH private keys for the servers and the bastion host.
 
 **Procedure**
 
 1. In `my-values.yaml`, enable the CaaS tier, the OpenShift Container Platform
    release images offered to hosted clusters, and the `cluster-fulfillment`
-   instance group:
+   and `network-fulfillment` instance groups with the Netris coordinates:
 
    ```yaml
    global:
@@ -666,69 +661,6 @@ backend.
        - version: "4.22.0"
          image: "quay.io/openshift-release-dev/ocp-release:4.22.0-multi"
          default: true
-   aap:
-     instanceGroups:
-       publishTemplates:
-         enabled: true
-       clusterFulfillment:
-         enabled: true
-         config:
-           NETWORK_CLASS: "esi"
-           NETWORK_STEPS_COLLECTION: "osac.steps"
-           DNS_CLASS: "dns.route53.dns"
-           EXTERNAL_ACCESS_BASE_DOMAIN: "clusters.example.com"
-           EXTERNAL_ACCESS_SUPPORTED_BASE_DOMAINS: "clusters.example.com"
-           HOSTED_CLUSTER_CONTROLLER_AVAILABILITY_POLICY: "HighlyAvailable"
-           HOSTED_CLUSTER_INFRASTRUCTURE_AVAILABILITY_POLICY: "HighlyAvailable"
-   ```
-
-2. Put the AWS credentials in a separate values file that is excluded from
-   version control, for example `my-secrets.local.yaml`:
-
-   ```yaml
-   aap:
-     instanceGroups:
-       clusterFulfillment:
-         secret:
-           AWS_ACCESS_KEY_ID: "<route53_access_key_id>"
-           AWS_SECRET_ACCESS_KEY: "<route53_secret_access_key>"
-   ```
-
-3. Install OSAC (see [Section 4.3](#43-installing-osac)), passing every
-   values file, for example `helm ... -f my-values.yaml -f my-secrets.local.yaml
-   ...`. For more information, see
-   [`aap-configuration.md`](https://github.com/osac-project/osac/blob/main/osac-installer/docs/aap-configuration.md)
-   and
-   [`dns-backend.md`](https://github.com/osac-project/osac/blob/main/osac-installer/docs/dns-backend.md).
-
-**Verification**
-
-- Complete [Section 7](#7-verifying-the-installation), including step 10.
-- Create a `ClusterOrder` custom resource and watch the AAP
-  `cluster-fulfillment` job.
-
-### 6.3 Installing OSAC for CaaS with the Netris network backend
-
-This workflow uses the same Operators as
-[Section 6.2](#62-installing-osac-for-caas-with-esi-being-retired) but
-switches the network backend from ESI to the Netris controller API. For the
-full variable reference, see
-[`network-backend.md`](https://github.com/osac-project/osac/blob/main/osac-installer/docs/network-backend.md).
-
-**Prerequisites**
-
-- The prerequisites from
-  [Section 6.2](#62-installing-osac-for-caas-with-esi-being-retired).
-- Access to the Netris controller: URL, user name, password, site and tenant
-  IDs, and management VPC details.
-- SSH private keys for the servers and the bastion host.
-
-**Procedure**
-
-1. In `my-values.yaml`, set `NETWORK_CLASS: netris` and the Netris coordinates
-   on both the `clusterFulfillment` and `networkFulfillment` instance groups:
-
-   ```yaml
    aap:
      instanceGroups:
        publishTemplates:
@@ -773,8 +705,8 @@ full variable reference, see
    `mgmt_interface` is the management NIC, and `vpc_interfaces` are the
    data-plane NICs.
 
-2. Put the secrets in a separate values file that is excluded from version
-   control:
+2. Put the AWS and Netris credentials in a separate values file that is
+   excluded from version control:
 
    ```yaml
    aap:
@@ -810,15 +742,19 @@ full variable reference, see
    ```
 
 4. Install OSAC (see [Section 4.3](#43-installing-osac)), passing every
-   values file.
+   values file, for example `helm ... -f my-values.yaml -f my-secrets.local.yaml
+   ...`. For more information, see
+   [`aap-configuration.md`](https://github.com/osac-project/osac/blob/main/osac-installer/docs/aap-configuration.md)
+   and
+   [`dns-backend.md`](https://github.com/osac-project/osac/blob/main/osac-installer/docs/dns-backend.md).
 
 **Verification**
 
-- Complete [Section 7](#7-verifying-the-installation).
+- Complete [Section 7](#7-verifying-the-installation), including step 10.
 - Create a `ClusterOrder` custom resource and watch the AAP
   `cluster-fulfillment` and `network-fulfillment` jobs.
 
-### 6.4 Installing OSAC for BMaaS
+### 6.3 Installing OSAC for BMaaS
 
 **Prerequisites**
 
@@ -855,9 +791,11 @@ full variable reference, see
    ```
 
    Set `bmf.metal3.namespace` to the namespace where your `BareMetalHost`
-   resources live. `lvms: { enabled: true }` is required here for the same
-   reason as [Section 6.1](#61-installing-osac-for-vmaas): without it, the
-   first provision fails with an empty `storage_tier_definitions`.
+   resources live. `lvms: { enabled: true }` is included here because
+   `values/bmaas-ci/instance.yaml` sets it and a BMaaS install has failed
+   without it in practice; the exact mechanism isn't confirmed for
+   `BareMetalInstance` provisioning specifically, unlike the `ComputeInstance`
+   case in [Section 6.1](#61-installing-osac-for-vmaas).
 
 2. Install OSAC. See [Section 4.3](#43-installing-osac).
 
@@ -1415,8 +1353,9 @@ with the correct `global.clusterDomain`.
 - **Instance group** — An AAP execution group with its own `ConfigMap` and
   Secret of environment variables, for example `cluster-fulfillment`,
   `network-fulfillment`, `storage-fulfillment`, or `publish-templates`.
-- **Network backend (`NETWORK_CLASS`)** — How CaaS clusters get networking:
-  `esi` (default) or `netris`.
+- **Network backend (`NETWORK_CLASS`)** — How CaaS clusters get networking,
+  driven by the `NetworkClass` custom resource's registered fabric and
+  Kubernetes managers. Netris is the documented fabric manager.
 - **DNS backend (`DNS_CLASS`)** — How CaaS clusters get DNS records:
   `dns.route53.dns` (default, AWS Route 53).
 - **config-as-code** — The Ansible content that the `osac-aap-bootstrap` job
