@@ -318,6 +318,7 @@ Run all installation commands in the same shell session.
    $ export NS=<namespace>
    $ export DOMAIN=$(oc get ingresses.config/cluster -o jsonpath='{.spec.domain}')
    $ export OCP_VERSION=$(oc get clusterversion version -o jsonpath='{.status.desired.version}' | cut -d. -f1,2)
+   $ export AAP_LICENSE_FILE=/path/to/license.zip
    ```
 
 2. Create the target namespace:
@@ -329,7 +330,7 @@ Run all installation commands in the same shell session.
 3. Create the Secret that holds the AAP subscription manifest:
 
    ```console
-   $ oc create secret generic config-as-code-manifest-ig --from-file=license.zip=/path/to/license.zip -n "$NS" --dry-run=client -o yaml | oc apply --server-side -f -
+   $ oc create secret generic config-as-code-manifest-ig --from-file=license.zip="$AAP_LICENSE_FILE" -n "$NS" --dry-run=client -o yaml | oc apply --server-side -f -
    ```
 
 4. Label the Secret so that the AAP bootstrap job reads it:
@@ -450,11 +451,13 @@ the `values/<service>-ci/` profiles use but the umbrella schema does not define
 pass through to a subchart and are marked `subchart`; confirm those in the
 subchart `values.yaml` file.
 
+<a id="table-51-service-enablement-my-valuesyaml"></a>
 **Table 5.1. Service enablement (`my-values.yaml`)**
 
 | Parameter | Source | Description | Default |
 |---|---|---|---|
 | `global.clusterDomain` | schema | Apps domain. All route host names and the default issuer, IdP, and Vault URLs derive from it. Set at installation. | `""` |
+| `global.osacDeploymentId` | schema | Required when `metering.enabled` is `true`. A stable identity for this deployment, stored in a retained `ConfigMap`. The chart fails to render without it when metering is on, and fails on upgrade if the value changes — never change it after the first successful install. | Not set |
 | `global.services.vmaas.enabled` | schema | Enables the VMaaS tier. | `true` |
 | `global.services.caas.enabled` | schema | Enables the CaaS tier. | `true` |
 | `global.services.bmaas.enabled` | schema | Enables the BMaaS tier and gates the `bmf` subchart. | `true` |
@@ -540,7 +543,7 @@ subchart `values.yaml` file.
 | `bmf.secrets.inventoryConfig`, `bmf.secrets.managementConfig`, `bmf.secrets.osClouds`, `bmf.configMaps.profiles` | schema | Names of the inventory, management, and `clouds.yaml` Secrets and the profiles `ConfigMap`. | Default names |
 | `operatorCrds.install` | schema | Install the OSAC CRDs. Set it to `false` if a cluster administrator manages them. | `true` |
 | `csiDriver.enabled` | schema | Deploys the CSI routing driver. Enable it for VMaaS. | `false` |
-| `metering.enabled` | schema | Deploys the metering service. Requires Kafka and a database connection. | `false` |
+| `metering.enabled` | schema | Deploys the metering service. Requires Kafka, a database connection, and `global.osacDeploymentId` (see [Table 5.1](#table-51-service-enablement-my-valuesyaml)). | `false` |
 | `metering.reconciliation.interval`, `metering.m360Adapter.enabled`, `metering.m360Adapter.m360.apiUrl`, `metering.m360Adapter.apiKeySecret` | subchart | Reconcile period and the Monetize360 billing adapter. | Not applicable |
 | `validation.enabled` | schema | Runs the pre-installation validation hook. | `true` |
 | `metallb.enabled`, `metallb.addressCIDR` | schema | In the `osac` chart, creates an `IPAddressPool` and an `L2Advertisement`. Edit the pool after installation to match your network. | `false` and `192.168.40.0/24` |
@@ -925,11 +928,14 @@ passed. If a step fails, see [Section 11](#11-troubleshooting).
     ```console
     $ ROUTE=$(oc get route fulfillment-api -n <namespace> -o jsonpath='{.spec.host}')
     $ curl -sk "https://$ROUTE/healthz"
-    $ osac login --address "$ROUTE" --token-script "oc create token fulfillment-controller -n <namespace> --duration 1h" --insecure
+    $ oc extract secret/default-ca -n cert-manager --keys=tls.crt --to=- > default-ca.crt
+    $ osac login --address "$ROUTE" --token-script "oc create token fulfillment-controller -n <namespace> --duration 1h" --ca-file default-ca.crt
     $ osac get tenants
     ```
 
-    Add `--insecure` only when the route uses the `default-ca` certificate.
+    Use `--ca-file` to trust the route's certificate, including the
+    self-signed `default-ca`. Use `--insecure` (skips certificate
+    verification) only for evaluation, never in production.
 
 12. Check the web console. Open the console URL in a browser. The URL must
     redirect to Keycloak and, after you log in, show the OSAC console. Skip
@@ -982,8 +988,13 @@ $ oc get route -n keycloak
 
 ### 8.2 Installing the `osac` CLI
 
+Download the CLI version matching the `fulfillment-service` subchart pinned
+by your `osac` chart release (`0.0.107` for release `0.0.17` — see
+[Section 3](#3-osac-component-versions)). Releases are tagged and published
+on the monorepo, not on the `fulfillment-service` repository itself:
+
 ```console
-$ curl -L -o osac https://github.com/osac-project/fulfillment-service/releases/latest/download/osac_Linux_x86_64
+$ curl -L -o osac https://github.com/osac-project/osac/releases/download/fulfillment-service/v0.0.107/osac_Linux_x86_64
 $ chmod +x osac
 $ sudo mv osac /usr/local/bin/
 ```
@@ -1022,10 +1033,12 @@ and
    $ osac create hub --kubeconfig=kubeconfig.hub-access --id <hub_name> --namespace <namespace>
    ```
 
-Add `--insecure` to the `osac login` command only when the API route presents a
-certificate that your client does not trust, such as the self-signed
-`default-ca`. Add `--as system:admin` only when your `oc` context cannot mint
-the token.
+If the API route presents a certificate your client doesn't trust, such as
+the self-signed `default-ca`, add `--ca-file default-ca.crt` to the
+`osac login` command (see step 11 of
+[Section 7](#7-verifying-the-installation) for how to extract it). Use
+`--insecure` instead only for evaluation, never in production. Add
+`--as system:admin` only when your `oc` context cannot mint the token.
 
 ### 8.4 Additional resources
 
@@ -1346,8 +1359,9 @@ with the correct `global.clusterDomain`.
 - **Tenant** — An isolation boundary in OSAC, identified by the
   `osac.openshift.io/tenant` annotation. `shared` is the built-in tenant used
   for resources shared across all tenants.
-- **VMaaS, CaaS, BMaaS, MaaS** — Virtual machine, cluster, bare metal, and metal
-  as a service. The service tiers, toggled by `global.services.*`.
+- **VMaaS, CaaS, BMaaS, MaaS** — Virtual machine, cluster, bare-metal host,
+  and raw-metal access as a service (per the chart schema; distinct from
+  BMaaS). The service tiers, toggled by `global.services.*`.
 - **ComputeInstance, Cluster, BareMetalInstance** — The user-facing resources
   for a virtual machine, a hosted cluster, and a bare-metal machine.
 - **Instance group** — An AAP execution group with its own `ConfigMap` and
