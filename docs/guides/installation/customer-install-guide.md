@@ -37,9 +37,10 @@ OSAC installs as three ordered Helm releases. Each release is a plain
 
 **Phase 1a: `osac-deps`.** Installs Operator Lifecycle Manager (OLM)
 `Subscription` resources for the platform Operators in their own namespaces:
-cert-manager and Ansible Automation Platform (AAP) always, and LVM Storage,
-MetalLB, OpenShift Virtualization, multicluster engine, and Streams for Apache
-Kafka when enabled. Post-installation hooks wait for the cert-manager and AAP
+cert-manager and Ansible Automation Platform (AAP) by default, and LVM
+Storage, MetalLB, OpenShift Virtualization, multicluster engine, and Streams
+for Apache Kafka when enabled. Every Operator is gated by a toggle — see
+[Table 2.1](#table-21-platform-operators-and-components). Post-installation hooks wait for the cert-manager and AAP
 `ClusterServiceVersion` (CSV) resources to reach `Succeeded`.
 
 **Phase 1b: `osac-infra`.** Installs the shared, cluster-scoped resources: the
@@ -85,15 +86,10 @@ toggles and values to set.
 
 ### 2.1 Cluster and access
 
-- You have a Red Hat OpenShift Container Platform 4.22 cluster and the
-  `cluster-admin` role on it. OSAC is validated on OpenShift Container Platform
-  4.22.4 to 4.22.6, channel `stable-4.22`. Earlier minor versions are not
-  exercised by CI, and some of the Operator channels in
-  [Table 2.1](#table-21-platform-operators-and-components) do not resolve on them.
-- A default storage class exists. PostgreSQL and Keycloak request persistent
-  volume claims; without a default storage class, they remain `Pending`. The
-  pre-installation validation hook issues a warning if no default storage class
-  exists. To set one, run the following command:
+- You have a Red Hat OpenShift Container Platform 4.22 cluster (4.22.4 to
+  4.22.6, channel `stable-4.22`) and the `cluster-admin` role on it.
+- A default storage class exists. The pre-installation validation hook issues
+  a warning if none exists. To set one, run the following command:
 
   ```console
   $ oc patch storageclass <storage_class_name> -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
@@ -102,15 +98,16 @@ toggles and values to set.
   For more information, see
   [Changing the default storage class](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/storage/dynamic-provisioning#change-default-storage-class_dynamic-provisioning).
 - The cluster pull secret (`openshift-config/pull-secret`) authenticates to
-  `registry.redhat.io` and `quay.io`, so that OLM can pull the Red Hat Operator
-  catalogs and operands. To download a current pull secret, see the pull secret
-  page in the [Red Hat Hybrid Cloud Console](https://console.redhat.com/openshift/install/pull-secret).
+  `registry.redhat.io` and `quay.io`. To download a current pull secret, see
+  the pull secret page in the
+  [Red Hat Hybrid Cloud Console](https://console.redhat.com/openshift/install/pull-secret).
   To apply it, see
   [Updating the global cluster pull secret](https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/images/managing-images).
-- The cluster has egress to `github.com` and `ghcr.io` for the OSAC images and
-  the `osac-ui` OCI chart, to `quay.io` for Keycloak, its PostgreSQL,
-  trust-manager, and the `origin-cli` hook image, and to `registry.redhat.io`
-  for the Red Hat Operator catalogs and operands.
+- `github.com`, `ghcr.io`, `quay.io`, and `registry.redhat.io` are reachable
+  from the cluster: `github.com` and `ghcr.io` for the OSAC images and the
+  `osac-ui` OCI chart, `quay.io` for Keycloak, its PostgreSQL, trust-manager,
+  and the `origin-cli` hook image, and `registry.redhat.io` for the Red Hat
+  Operator catalogs and operands.
 - The command
   `oc get ingresses.config/cluster -o jsonpath='{.spec.domain}'` returns your
   apps domain. The installation derives all route host names from it.
@@ -121,7 +118,8 @@ toggles and values to set.
   its hooks call `oc` and `kubectl`.
 - Helm 3.8 or later, for OCI registry support.
 - The `osac` CLI, latest release, for postinstallation hub registration and
-  day-2 operations. Not required for the Helm installation.
+  day-2 operations (see [Section 8.2](#82-installing-the-osac-cli)). Not
+  required for the Helm installation.
 
 Installing the published phase-2 chart requires only `oc` and `helm`.
 
@@ -180,18 +178,12 @@ Notes on individual components:
 - **LVM Storage** uses a channel that tracks the OpenShift Container Platform
   minor version; the installation sets it. Any dynamic storage class works if
   you disable `lvms.enabled`.
+- **MetalLB Operator** provides a `LoadBalancer`-class implementation. Any
+  solution that provides one works if you disable `metallb.enabled`.
 - **multicluster engine for Kubernetes Operator** is required for
   agent-based cluster provisioning. If Red Hat Advanced Cluster Management for
   Kubernetes (RHACM) is installed, leave `mce.enabled=false`; RHACM manages its
   own multicluster engine.
-
-> **Note**
->
-> The `stable-2.17` multicluster engine channel pairs with OpenShift Container
-> Platform 4.22, verified as `multicluster-engine.v2.17.2` on 4.22.6. On another
-> OpenShift Container Platform version, take the channel from the multicluster
-> engine support matrix for that release, indexed from the
-> [MCE 2.8 support matrix](https://access.redhat.com/articles/7099674).
 
 ### 2.4 Credentials and external services
 
@@ -247,10 +239,12 @@ Required for BMaaS with the Metal3 backend:
 ### 2.5 Requirements by service
 
 - **VMaaS** (`global.services.vmaas.enabled`) requires OpenShift Virtualization,
-  LVM Storage or another dynamic storage class, and MetalLB.
-- **CaaS** (`global.services.caas.enabled`) requires multicluster engine or
-  RHACM, a DNS backend, a network backend, and
-  `aap.instanceGroups.clusterFulfillment` configuration. For more information,
+  LVM Storage or another dynamic storage class, and MetalLB or another
+  `LoadBalancer`-class implementation.
+- **CaaS** (`global.services.caas.enabled`) requires multicluster engine
+  (standalone, or provided by RHACM if it's installed), a DNS backend, a
+  network backend, and `aap.instanceGroups.clusterFulfillment` configuration.
+  For more information,
   see
   [`aap-configuration.md`](https://github.com/osac-project/osac/blob/main/osac-installer/docs/aap-configuration.md).
 - **BMaaS** (`global.services.bmaas.enabled`) requires BareMetalOperator and a
@@ -361,12 +355,9 @@ You create one values file for the `osac` chart, `my-values.yaml`.
 
 > **Warning**
 >
-> Do not use the `values/<service>-ci/` profiles for a real deployment. They
-> set `keycloak.devFixtures.enabled: true`, which seeds fixed, known passwords;
-> `keycloak.adminUsername: admin` and `keycloak.adminPassword: admin`; and
-> `bundledPostgres.enabled: true`, which deploys an ephemeral database. Use
-> them only as a reference for the structure of the service-specific value
-> blocks.
+> Do not use the `values/<service>-ci/` profiles for a real deployment — see
+> [Section 9.2](#92-evaluation-only) for why. Use them only as a reference for
+> the structure of the service-specific value blocks.
 
 **Procedure**
 
@@ -384,11 +375,14 @@ You create one values file for the `osac` chart, `my-values.yaml`.
 
    ```yaml
    keycloak:
-     devFixtures: { enabled: false }
+     devFixtures:
+       enabled: false
      adminUsername: <admin_user>
      adminPassword: <strong_password>
-   bundledPostgres: { enabled: false }
-   bundledVault:    { enabled: false }
+   bundledPostgres:
+     enabled: false
+   bundledVault:
+     enabled: false
    ```
 
 4. Add the service-specific value blocks (`global.services.*`, `csiDriver`,
@@ -586,7 +580,7 @@ the cluster. Then follow [Section 4](#4-installing-osac).
 
 - OpenShift Virtualization is installed.
 - LVM Storage is installed, or another dynamic storage class exists.
-- MetalLB is installed.
+- MetalLB is installed, or another `LoadBalancer`-class implementation exists.
 
 **Procedure**
 
@@ -598,18 +592,22 @@ the cluster. Then follow [Section 4](#4-installing-osac).
    ```yaml
    global:
      services: { vmaas: { enabled: true }, caas: { enabled: false }, bmaas: { enabled: false }, maas: { enabled: false } }
-   csiDriver: { enabled: true }
-   lvms: { enabled: true }
+   csiDriver:
+     enabled: true
+   lvms:
+     enabled: true
    operator:
      networkManagers:
        k8sManagers:
-         k8s_only: { enabled: true }
+         k8s_only:
+           enabled: true
    networkClass:
      fabricManager: ""
      k8sManager: "k8s_only"
    aap:
      instanceGroups:
-       publishTemplates: { enabled: false }
+       publishTemplates:
+         enabled: false
    ```
 
    `lvms: { enabled: true }` runs the `osac` chart's `register-local-storage`
@@ -648,8 +646,9 @@ backend.
 
 **Prerequisites**
 
-- multicluster engine or RHACM is installed.
-- MetalLB and LVM Storage are installed.
+- multicluster engine is installed (standalone, or provided by RHACM).
+- MetalLB (or another `LoadBalancer`-class implementation) and LVM Storage
+  (or another dynamic storage class) are installed.
 - You have AWS Route 53 credentials for the target hosted zone.
 
 **Procedure**
@@ -669,7 +668,8 @@ backend.
          default: true
    aap:
      instanceGroups:
-       publishTemplates: { enabled: true }
+       publishTemplates:
+         enabled: true
        clusterFulfillment:
          enabled: true
          config:
@@ -731,7 +731,8 @@ full variable reference, see
    ```yaml
    aap:
      instanceGroups:
-       publishTemplates: { enabled: true }
+       publishTemplates:
+         enabled: true
        clusterFulfillment:
          enabled: true
          config:
@@ -833,9 +834,11 @@ full variable reference, see
    ```yaml
    global:
      services: { bmaas: { enabled: true }, vmaas: { enabled: false }, caas: { enabled: false }, maas: { enabled: false } }
-   lvms: { enabled: true }
+   lvms:
+     enabled: true
    operator:
-     controllers: { networkingProvisioning: false }
+     controllers:
+       networkingProvisioning: false
    bmf:
      metal3:
        enabled: true
@@ -847,7 +850,8 @@ full variable reference, see
        enableNetworkingProvisioning: "false"
    aap:
      instanceGroups:
-       publishTemplates: { enabled: false }
+       publishTemplates:
+         enabled: false
    ```
 
    Set `bmf.metal3.namespace` to the namespace where your `BareMetalHost`
@@ -1048,8 +1052,10 @@ $ sudo mv osac /usr/local/bin/
 
 ### 8.3 Registering the hub
 
-This procedure applies when the Fulfillment Service and the hub run on the same
-cluster. For multi-cluster hub topologies, see
+The hub is the OpenShift Container Platform cluster that the OSAC Operator
+and AAP run on and that provisions resources. This procedure applies when the
+Fulfillment Service and the hub run on the same cluster. For multi-cluster
+hub topologies, see
 [`osac-installer/README.md`](https://github.com/osac-project/osac/blob/main/osac-installer/README.md)
 and
 [`OSAC-CLI-HOWTO.md`](https://github.com/osac-project/osac/blob/main/osac-installer/OSAC-CLI-HOWTO.md).
@@ -1185,9 +1191,14 @@ $ oc logs job/osac-pre-install-validate -n <namespace>
   `false` only when a cert-manager distribution is present.
 - `BareMetalHost CRD ... not found`, `No Provisioning CR found`, or
   `Provisioning CR has watchAllNamespaces: false`: these are BMaaS Metal3
-  prerequisites. Install BareMetalOperator and create or patch a `Provisioning`
-  resource with `spec.watchAllNamespaces: true`, or set `bmf.metal3.enabled` to
-  `false`.
+  prerequisites. Install BareMetalOperator, then patch the `Provisioning`
+  resource:
+
+  ```console
+  $ oc patch provisioning provisioning-configuration --type merge -p '{"spec":{"watchAllNamespaces": true}}'
+  ```
+
+  Or set `bmf.metal3.enabled` to `false`.
 - `No default StorageClass found`: this is a warning, not a failure. Keycloak
   and PostgreSQL persistent volume claims remain `Pending`. Set a default
   storage class. See [Section 2.1](#21-cluster-and-access).
@@ -1304,18 +1315,19 @@ Common causes:
 - The config-as-code Git source (`aap.configAsCode.projectGitUri` and
   `aap.configAsCode.projectGitBranch`) is unreachable.
 
-### 11.9 The `osac-publish-templates` hook fails (CaaS)
+### 11.9 The `osac-publish-templates` hook fails
 
 ```console
 $ oc logs job/osac-publish-templates -n <namespace> -c wait-for-fulfillment
 $ oc logs job/osac-publish-templates -n <namespace> -c publish-templates
 ```
 
-The init container polls the Fulfillment Service REST gateway for up to 600
-seconds. The job then launches the `osac-publish-templates` AAP job template
-and requires a valid `osac-aap-api-token` Secret. To disable the hook for
-VMaaS-only or BMaaS-only installations, set
-`aap.instanceGroups.publishTemplates.enabled` to `false`.
+The hook runs by default, mainly for CaaS. The init container polls the
+Fulfillment Service REST gateway for up to 600 seconds. The job then
+launches the `osac-publish-templates` AAP job template and requires a valid
+`osac-aap-api-token` Secret. To disable the hook for VMaaS-only or
+BMaaS-only installations, set `aap.instanceGroups.publishTemplates.enabled`
+to `false`.
 
 ### 11.10 The `fulfillment-*` pods are in `CrashLoopBackOff`
 
@@ -1328,7 +1340,12 @@ $ oc logs deploy/fulfillment-controller -n <namespace>
 - `issuer URL '...' is not trusted`: the `--auth-issuer-url` and `--idp-url`
   values of the service do not match the external host name of Keycloak. These
   values derive from `global.clusterDomain`; confirm that it was set at
-  installation and matches `keycloak.route.hostname`.
+  installation and matches `keycloak.route.hostname`. To check the value the
+  running container actually received:
+
+  ```console
+  $ oc get deploy fulfillment-grpc-server -n <namespace> -o jsonpath='{.spec.template.spec.containers[0].args}' | tr ',' '\n' | grep -E 'issuer|idp'
+  ```
 - Missing `osac-db-config` or controller-credential Secrets: the prerequisite
   infrastructure did not create them. Check with whoever prepared the cluster.
 - `lookup openbao.<namespace>.svc ... no such host` or
@@ -1386,14 +1403,15 @@ with the correct `global.clusterDomain`.
   version. A status of `Succeeded` means that the Operator is running.
 - **Hub** — The OpenShift Container Platform cluster that the OSAC Operator and
   AAP run on and that provisions resources. This guide assumes that the
-  Fulfillment Service and the hub are the same cluster.
+  Fulfillment Service runs on the hub, that is, the hub and the cluster
+  running the Fulfillment Service are the same cluster.
 - **Tenant** — An isolation boundary in OSAC, identified by the
-  `osac.openshift.io/tenant` annotation. `shared` is the built-in default
-  tenant.
+  `osac.openshift.io/tenant` annotation. `shared` is the built-in tenant used
+  for resources shared across all tenants.
 - **VMaaS, CaaS, BMaaS, MaaS** — Virtual machine, cluster, bare metal, and metal
   as a service. The service tiers, toggled by `global.services.*`.
-- **ComputeInstance, ClusterOrder, BareMetalInstance** — The user-facing custom
-  resources for a virtual machine, a hosted cluster, and a bare-metal machine.
+- **ComputeInstance, Cluster, BareMetalInstance** — The user-facing resources
+  for a virtual machine, a hosted cluster, and a bare-metal machine.
 - **Instance group** — An AAP execution group with its own `ConfigMap` and
   Secret of environment variables, for example `cluster-fulfillment`,
   `network-fulfillment`, `storage-fulfillment`, or `publish-templates`.
