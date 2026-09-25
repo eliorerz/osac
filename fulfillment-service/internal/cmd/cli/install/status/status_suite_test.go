@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package status
 
 import (
+	"errors"
+	"net/http"
 	"testing"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
@@ -24,3 +26,19 @@ func TestStatus(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Status command")
 }
+
+// Reset httpDo (latest_release.go's injection point for
+// latestOSACReleaseVersion's HTTP call) to a fast, deterministic "offline"
+// stub before every spec, regardless of which Describe it's in: unit tests
+// must never depend on real network egress, and without this, any spec
+// that exercises watchModel.Init() (which now always fires a
+// latestReleaseCmd as part of its batch) would otherwise make a real
+// request to api.github.com. A spec that wants to test
+// latestOSACReleaseVersion's own success/parsing path overrides httpDo
+// itself and restores it via DeferCleanup, same as any other test-local
+// stub.
+var _ = BeforeEach(func() {
+	httpDo = func(*http.Request) (*http.Response, error) {
+		return nil, errors.New("network access disabled in tests")
+	}
+})

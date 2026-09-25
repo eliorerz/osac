@@ -154,7 +154,12 @@ func (r *runnerContext) run(cmd *cobra.Command, _ []string) error {
 			console.Errorf(ctx, "Failed to list OSAC's workloads: %v\n", err)
 			return exit.Error(1)
 		}
-		console.Infof(ctx, "%s", renderStatus(results, render.Width(console.Stdout()), 0, chartVersion))
+		// Best-effort, single lookup -- see pickDisplayVersion. A one-shot
+		// run doesn't need the --watch path's caching: it only ever makes
+		// this call once regardless.
+		latestRelease, _ := latestOSACReleaseVersion(ctx)
+		displayVersion := pickDisplayVersion(chartVersion, latestRelease)
+		console.Infof(ctx, "%s", renderStatus(results, render.Width(console.Stdout()), 0, displayVersion))
 		return nil
 	}
 

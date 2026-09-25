@@ -205,6 +205,18 @@ var _ = Describe("watchModel", func() {
 		Expect(cmd()).To(BeAssignableToTypeOf(spinnerTickMsg{}))
 	})
 
+	It("stores the latest release version on latestReleaseMsg, without scheduling another fetch", func() {
+		next, cmd := m.Update(latestReleaseMsg{version: "0.0.21"})
+
+		Expect(next.(watchModel).latestReleaseVersion).To(Equal("0.0.21"))
+		Expect(cmd).To(BeNil()) // fetched once at Init, never re-fetched on a tick
+	})
+
+	It("also kicks off the one-time latest-release lookup from Init", func() {
+		msg := findMsg[latestReleaseMsg](m.Init())
+		Expect(msg).To(Equal(latestReleaseMsg{})) // httpDo is stubbed to fail in tests; empty version is the expected fallback
+	})
+
 	It("renders a different spinner frame each time spinnerFrame advances", func() {
 		m.results = []install.Result{{Check: passingCheck, Status: install.Progressing, Message: "installing"}}
 

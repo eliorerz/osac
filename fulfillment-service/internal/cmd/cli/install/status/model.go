@@ -37,6 +37,16 @@ type checkResultsMsg struct {
 // tickMsg triggers the next workload listing in watch mode.
 type tickMsg time.Time
 
+// latestReleaseMsg carries the result of the one-time (not re-fetched per
+// tick, see watchModel.latestReleaseVersion) lookup of the latest
+// published "osac" release version. An empty version means the lookup
+// failed or found nothing -- not distinguished from "not fetched yet",
+// since both cases mean the same thing to pickDisplayVersion: fall back to
+// the chart's own version.
+type latestReleaseMsg struct {
+	version string
+}
+
 // spinnerTickMsg advances the Progressing spinner's animation by one frame.
 // Ticks on its own fast, fixed cadence (spinnerTickInterval) independent of
 // --interval, which is usually far too slow (default 5s) to animate
@@ -69,6 +79,16 @@ type watchModel struct {
 	width        int
 	spinnerFrame int
 
+	// latestReleaseVersion is fetched exactly once, at Init, never
+	// re-fetched on later ticks -- unlike everything else in this model,
+	// which legitimately changes over the course of an install and needs
+	// re-checking on --interval. The latest published osac release does
+	// not change over the lifetime of one `--watch` run, and GitHub's
+	// unauthenticated API rate limit (60 req/hour) would be exhausted
+	// within minutes at the default 5s --interval if this were re-fetched
+	// every tick alongside everything else.
+	latestReleaseVersion string
+
 	// vp scrolls the dashboard when it's taller than the terminal -- without
 	// it, a small terminal (or an install with many components) just
 	// truncates the bottom of the frame with no way to see the rest.
@@ -91,11 +111,27 @@ func newWatchModel(ctx context.Context, clients *install.Clients, namespace stri
 }
 
 func (m watchModel) Init() tea.Cmd {
-	return tea.Batch(gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks), spinnerTick())
+	return tea.Batch(
+		gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks),
+		spinnerTick(),
+		latestReleaseCmd(m.ctx),
+	)
 }
 
 func spinnerTick() tea.Cmd {
 	return tea.Tick(spinnerTickInterval, func(t time.Time) tea.Msg { return spinnerTickMsg(t) })
+}
+
+// latestReleaseCmd runs the one-time latestOSACReleaseVersion lookup (see
+// watchModel.latestReleaseVersion for why this is fetched only once, not
+// on every tick). Never itself an error to the caller: a failed lookup
+// just carries an empty version, which pickDisplayVersion already treats
+// as "fall back to the chart's own version".
+func latestReleaseCmd(ctx context.Context) tea.Cmd {
+	return func() tea.Msg {
+		version, _ := latestOSACReleaseVersion(ctx)
+		return latestReleaseMsg{version: version}
+	}
 }
 
 // gatherResultsCmd combines the namespace/workload results (WorkloadChecks),
@@ -138,7 +174,8 @@ func (m watchModel) body() string {
 	if m.err != nil {
 		return renderError(m.err, m.width)
 	}
-	return renderStatus(m.results, m.width, m.spinnerFrame, m.chartVersion)
+	displayVersion := pickDisplayVersion(m.chartVersion, m.latestReleaseVersion)
+	return renderStatus(m.results, m.width, m.spinnerFrame, displayVersion)
 }
 
 func (m watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -169,6 +206,8 @@ func (m watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case spinnerTickMsg:
 		m.spinnerFrame++
 		cmd = spinnerTick()
+	case latestReleaseMsg:
+		m.latestReleaseVersion = msg.version
 	default:
 		return m, nil
 	}
