@@ -34,6 +34,15 @@ spec:
         # of a second, hand-maintained implementation of the same checks in
         # shell.
         image: {{ .Values.service.images.service }}
+        # OpenShift's restricted-v2 SCC runs this as an arbitrary UID with no
+        # /etc/passwd entry, so $HOME is unset (or "/", not writable) -- and
+        # the osac CLI always creates its config/cache directories under
+        # $HOME on startup (see persistentPreRun in root_cmd.go), even for a
+        # read-only command like `install validate`. Point it at a writable
+        # scratch directory instead of relying on the pod's default HOME.
+        env:
+        - name: HOME
+          value: /tmp
         command:
         - osac
         args:
