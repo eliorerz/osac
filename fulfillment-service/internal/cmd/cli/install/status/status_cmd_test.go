@@ -277,8 +277,9 @@ var _ = Describe("Status command execution", func() {
 			loadClients: func(string) (*install.Clients, error) {
 				return &install.Clients{
 					// No default StorageClass: that prerequisite fails, but
-					// the namespace and Deployment (the only two entries
-					// the progress bar counts) both pass.
+					// the Deployment (the only entry the progress bar
+					// counts -- the namespace and prerequisites don't) is
+					// ready.
 					Typed: fake.NewSimpleClientset(
 						&appsv1.Deployment{
 							ObjectMeta: metav1.ObjectMeta{Name: "fulfillment-grpc-server", Namespace: "osac"},
@@ -293,7 +294,7 @@ var _ = Describe("Status command execution", func() {
 						runtime.NewScheme(),
 						listKinds,
 						newUnstructuredCRD("certificates.cert-manager.io"),
-						newUnstructuredCSV("cert-manager-operator", "openshift-cert-manager-operator.v1.20.0", "Succeeded", "1.20.0"),
+						newUnstructuredCSV("cert-manager-operator", "cert-manager-operator.v1.20.0", "Succeeded", "1.20.0"),
 					),
 				}, nil
 			},
@@ -310,7 +311,7 @@ var _ = Describe("Status command execution", func() {
 		out := stdout.String()
 		Expect(out).To(ContainSubstring("RESOURCES"))
 		Expect(out).To(ContainSubstring("OPERATORS"))
-		Expect(out).To(ContainSubstring("2/2 ready")) // namespace + Deployment only
+		Expect(out).To(ContainSubstring("1/1 ready")) // the Deployment only -- namespace and prerequisites don't count
 	})
 
 	It("with --watch, runs the interactive program instead of printing once", func() {

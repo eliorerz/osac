@@ -82,6 +82,18 @@ var _ = Describe("renderStatus", func() {
 
 		Expect(got).To(ContainSubstring("2/2 ready"))
 	})
+
+	It("does not report 100% ready off the namespace alone, before any workload has been discovered", func() {
+		namespaceCheck := install.Check{Name: "osac", Severity: install.Required, Category: install.NamespaceCategory}
+		results := []install.Result{
+			{Check: namespaceCheck, Status: install.Pass, Message: "exists"},
+		}
+
+		got := renderStatus(results, 80)
+
+		Expect(got).NotTo(ContainSubstring("100%"))
+		Expect(got).To(ContainSubstring("0/0 ready"))
+	})
 })
 
 var _ = Describe("renderError", func() {
@@ -230,5 +242,12 @@ var _ = Describe("statusIcon", func() {
 	It("shows an X for a failed Warning check too, just styled differently", func() {
 		icon, _ := statusIcon(install.Result{Check: warningCheck, Status: install.Failed})
 		Expect(icon).To(Equal("✗"))
+	})
+
+	It("shows a distinct icon and color for Progressing, never the Failed X", func() {
+		icon, style := statusIcon(install.Result{Check: requiredCheck, Status: install.Progressing})
+		Expect(icon).NotTo(Equal("✗"))
+		Expect(icon).NotTo(Equal("✓"))
+		Expect(style.GetForeground()).To(Equal(lipgloss.Color(colorCyan)))
 	})
 })

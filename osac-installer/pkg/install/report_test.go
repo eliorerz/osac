@@ -63,4 +63,14 @@ var _ = Describe("FormatResults", func() {
 		Expect(lines[2]).To(ContainSubstring("c"))
 		Expect(lines[3]).To(Equal("2 passed, 1 failed"))
 	})
+
+	It("marks a Progressing check PROGRESSING, not PASS or FAIL, and counts it separately", func() {
+		lines := FormatResults([]Result{
+			{Check: Check{Name: "cert-manager-operator", Severity: Required}, Status: Progressing, Message: "installing"},
+		})
+
+		Expect(lines[0]).To(ContainSubstring("PROGRESSING"))
+		Expect(lines[0]).NotTo(ContainSubstring("PASS"))
+		Expect(lines[1]).To(Equal("0 passed, 1 progressing, 0 failed"))
+	})
 })

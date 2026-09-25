@@ -67,7 +67,7 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(d.Message).To(ContainSubstring("2/2"))
 	})
 
-	It("fails a Deployment whose ready replicas are below desired", func() {
+	It("marks a Deployment whose ready replicas are below desired as Progressing, not Failed", func() {
 		clients := newFakeClients([]runtime.Object{
 			namespaceObj("osac"),
 			&appsv1.Deployment{
@@ -80,7 +80,7 @@ var _ = Describe("WorkloadChecks", func() {
 		results, err := WorkloadChecks(context.Background(), clients, "osac")
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect(byName(results)["osac-ui"].Status).To(Equal(Failed))
+		Expect(byName(results)["osac-ui"].Status).To(Equal(Progressing))
 	})
 
 	It("defaults desired replicas to 1 when spec.replicas is nil", func() {
@@ -121,7 +121,7 @@ var _ = Describe("WorkloadChecks", func() {
 		names := byName(results)
 		Expect(names["openbao"].Status).To(Equal(Pass))
 		Expect(names["openbao"].Check.Category).To(Equal(ServiceCategory))
-		Expect(names["some-daemon"].Status).To(Equal(Failed))
+		Expect(names["some-daemon"].Status).To(Equal(Progressing))
 		Expect(names["some-daemon"].Message).To(ContainSubstring("2/3"))
 	})
 
@@ -161,7 +161,7 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(job.Message).To(Equal("failed"))
 	})
 
-	It("marks a still-running Job as Failed/Warning, not Failed/Required -- it's expected, not broken", func() {
+	It("marks a still-running Job as Progressing, not Failed -- it's expected, not broken", func() {
 		clients := newFakeClients([]runtime.Object{
 			namespaceObj("osac"),
 			&batchv1.Job{
@@ -175,7 +175,7 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(err).NotTo(HaveOccurred())
 		job := byName(results)["osac-aap-bootstrap"]
 		Expect(job.Check.Severity).To(Equal(Warning))
-		Expect(job.Status).To(Equal(Failed))
+		Expect(job.Status).To(Equal(Progressing))
 		Expect(job.Message).To(Equal("in progress"))
 	})
 
@@ -207,7 +207,7 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(results[0].Message).To(Equal("exists"))
 	})
 
-	It("reports the namespace as Failed/Warning, and lists nothing else, when it doesn't exist yet", func() {
+	It("reports the namespace as Progressing/Warning, and lists nothing else, when it doesn't exist yet", func() {
 		clients := newFakeClients(nil, nil)
 
 		results, err := WorkloadChecks(context.Background(), clients, "osac")
@@ -216,7 +216,7 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(results).To(HaveLen(1))
 		Expect(results[0].Check.Category).To(Equal(NamespaceCategory))
 		Expect(results[0].Check.Severity).To(Equal(Warning))
-		Expect(results[0].Status).To(Equal(Failed))
+		Expect(results[0].Status).To(Equal(Progressing))
 		Expect(results[0].Message).To(Equal("not created yet"))
 	})
 })

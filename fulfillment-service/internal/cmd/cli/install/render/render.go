@@ -38,6 +38,7 @@ const (
 	colorGreen  = "10" // Pass
 	colorRed    = "9"  // Fail, Required
 	colorYellow = "11" // Fail, Warning
+	colorCyan   = "14" // Progressing -- installing, not a failure
 )
 
 // maxTableWidth caps the table at a readable width even on a very wide
@@ -112,16 +113,22 @@ func Table(results []install.Result, width int) string {
 }
 
 func statusLabel(status install.Status) string {
-	if status == install.Pass {
+	switch status {
+	case install.Pass:
 		return "PASS"
+	case install.Progressing:
+		return "PROGRESSING"
+	default:
+		return "FAIL"
 	}
-	return "FAIL"
 }
 
 func statusColor(result install.Result) string {
 	switch {
 	case result.Status == install.Pass:
 		return colorGreen
+	case result.Status == install.Progressing:
+		return colorCyan
 	case result.Check.Severity == install.Warning:
 		return colorYellow
 	default:
@@ -130,15 +137,21 @@ func statusColor(result install.Result) string {
 }
 
 func summaryLine(results []install.Result) string {
-	var passed, failed int
+	var passed, progressing, failed int
 	for _, result := range results {
-		if result.Status == install.Pass {
+		switch result.Status {
+		case install.Pass:
 			passed++
-		} else {
+		case install.Progressing:
+			progressing++
+		default:
 			failed++
 		}
 	}
 	line := fmt.Sprintf("%d passed, %d failed", passed, failed)
+	if progressing > 0 {
+		line = fmt.Sprintf("%d passed, %d progressing, %d failed", passed, progressing, failed)
+	}
 	if failed == 0 {
 		return line
 	}

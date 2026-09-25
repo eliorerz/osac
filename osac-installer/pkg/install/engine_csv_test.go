@@ -69,7 +69,7 @@ var _ = Describe("buildCSVSucceededCheck", func() {
 		Expect(message).To(ContainSubstring("not installed"))
 	})
 
-	It("fails when the CSV exists but hasn't reached Succeeded", func() {
+	It("reports Progressing, not Failed, when the CSV exists but hasn't reached Succeeded", func() {
 		check, _ := buildCSVSucceededCheck(entry)
 		clients := newFakeClients(nil, []runtime.Object{
 			newUnstructuredCSV("openshift-cnv", "kubevirt-hyperconverged.v4.22.6", "Installing", "4.22.6"),
@@ -77,8 +77,8 @@ var _ = Describe("buildCSVSucceededCheck", func() {
 
 		status, message := check.Run(context.Background(), clients)
 
-		Expect(status).To(Equal(Failed))
-		Expect(message).To(ContainSubstring("not ready"))
+		Expect(status).To(Equal(Progressing))
+		Expect(message).To(ContainSubstring("installing"))
 	})
 
 	It("fails when the installed version is older than minVersion", func() {

@@ -100,7 +100,7 @@ func namespaceResult(ctx context.Context, clients *Clients, namespace string) (R
 	case apierrors.IsNotFound(err):
 		return Result{
 			Check:   Check{Name: namespace, Description: "Namespace", Severity: Warning, Category: NamespaceCategory},
-			Status:  Failed,
+			Status:  Progressing,
 			Message: "not created yet",
 		}, false, nil
 	case err != nil:
@@ -122,7 +122,7 @@ func deploymentResult(d appsv1.Deployment) Result {
 	ready := d.Status.ReadyReplicas
 	status := Pass
 	if ready < desired {
-		status = Failed
+		status = Progressing
 	}
 	return Result{
 		Check:   Check{Name: d.Name, Description: "Deployment", Severity: Required, Category: ServiceCategory},
@@ -139,7 +139,7 @@ func statefulSetResult(s appsv1.StatefulSet) Result {
 	ready := s.Status.ReadyReplicas
 	status := Pass
 	if ready < desired {
-		status = Failed
+		status = Progressing
 	}
 	return Result{
 		Check:   Check{Name: s.Name, Description: "StatefulSet", Severity: Required, Category: ServiceCategory},
@@ -153,7 +153,7 @@ func daemonSetResult(ds appsv1.DaemonSet) Result {
 	ready := ds.Status.NumberReady
 	status := Pass
 	if ready < desired {
-		status = Failed
+		status = Progressing
 	}
 	return Result{
 		Check:   Check{Name: ds.Name, Description: "DaemonSet", Severity: Required, Category: ServiceCategory},
@@ -162,11 +162,11 @@ func daemonSetResult(ds appsv1.DaemonSet) Result {
 	}
 }
 
-// jobResult distinguishes a Job still running (Warning: expected during a
-// fresh install -- the AAP bootstrap job alone can take 10-40 minutes) from
-// one that has actually failed (Required), so a still-in-progress
-// configuration step doesn't render as red/alarming the same way a genuine
-// failure does.
+// jobResult distinguishes a Job still running (expected during a fresh
+// install -- the AAP bootstrap job alone can take 10-40 minutes) from one
+// that has actually failed, so a still-in-progress configuration step
+// renders as "installing" rather than the same red/alarming failure state
+// as a Job that genuinely errored out.
 func jobResult(j batchv1.Job) Result {
 	switch {
 	case j.Status.Succeeded > 0:
@@ -184,7 +184,7 @@ func jobResult(j batchv1.Job) Result {
 	default:
 		return Result{
 			Check:   Check{Name: j.Name, Description: "Job", Severity: Warning, Category: JobCategory},
-			Status:  Failed,
+			Status:  Progressing,
 			Message: "in progress",
 		}
 	}

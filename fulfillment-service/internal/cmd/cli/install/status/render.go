@@ -30,6 +30,7 @@ const (
 	colorGreen  = "10" // Pass; also the progress bar once everything is ready
 	colorRed    = "9"  // Fail, Required; also the progress bar early on
 	colorYellow = "11" // Fail, Warning; also the progress bar approaching ready
+	colorCyan   = "14" // Progressing -- distinct from red/yellow/green so "installing" never reads as a failure
 	colorBanner = "99" // Purple
 	colorBorder = "99"
 	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
@@ -124,16 +125,22 @@ func frame(content string, frameWidth int) string {
 }
 
 // installationCategories are the install.Category values that count toward
-// the progress bar's ready-percentage: the namespace and the workloads
-// actually being installed right now. Prerequisite categories (Resources,
-// Operators) are shown in their own sections for context -- whether the
-// cluster was ready to install -- but deliberately don't move the bar,
-// which tracks the install's own progress, not the cluster's readiness
-// before it started.
+// the progress bar's ready-percentage: the workloads actually being
+// installed right now. Prerequisite categories (Resources, Operators)
+// don't count either, for the same reason -- both are shown in their own
+// sections for context but don't move the bar, which tracks the install's
+// own progress.
+//
+// NamespaceCategory is deliberately excluded too, even though it's part of
+// the install lifecycle: the namespace existing is a precondition for
+// anything else to be discoverable at all, not a component of the install
+// itself, and counting it would make the bar read 100% the moment the
+// namespace is created but before `helm install` has created a single
+// Deployment or Job -- exactly the false "fully ready" reading this
+// exclusion exists to prevent.
 var installationCategories = map[install.Category]bool{
-	install.NamespaceCategory: true,
-	install.ServiceCategory:   true,
-	install.JobCategory:       true,
+	install.ServiceCategory: true,
+	install.JobCategory:     true,
 }
 
 // sections groups results into Namespace/Services/Jobs first (matching the
@@ -274,15 +281,23 @@ func truncateEllipsis(s string, width int) string {
 	return string(r[:width-1]) + "…"
 }
 
+// statusIcon picks a check's icon and color: ✓ green once it Pass-es, ~ cyan
+// while it's Progressing (actively installing -- not a failure, so it must
+// never render as red/yellow the way an actual failure does), and ✗
+// red/yellow (by Severity) once it's genuinely Failed.
 func statusIcon(result install.Result) (string, lipgloss.Style) {
 	bold := lipgloss.NewStyle().Bold(true)
-	if result.Status == install.Pass {
+	switch result.Status {
+	case install.Pass:
 		return "✓", bold.Foreground(lipgloss.Color(colorGreen))
+	case install.Progressing:
+		return "~", bold.Foreground(lipgloss.Color(colorCyan))
+	default:
+		if result.Check.Severity == install.Warning {
+			return "✗", bold.Foreground(lipgloss.Color(colorYellow))
+		}
+		return "✗", bold.Foreground(lipgloss.Color(colorRed))
 	}
-	if result.Check.Severity == install.Warning {
-		return "✗", bold.Foreground(lipgloss.Color(colorYellow))
-	}
-	return "✗", bold.Foreground(lipgloss.Color(colorRed))
 }
 
 // osacFont is a small 6-row block font, just the letters OSAC needs. Every

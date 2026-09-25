@@ -23,20 +23,29 @@ import "fmt"
 // testable without one.
 func FormatResults(results []Result) []string {
 	lines := make([]string, 0, len(results)+1)
-	var passed, failed int
+	var passed, progressing, failed int
 	for _, result := range results {
-		status := "PASS"
-		if result.Status == Failed {
+		var status string
+		switch result.Status {
+		case Pass:
+			status = "PASS"
+			passed++
+		case Progressing:
+			status = "PROGRESSING"
+			progressing++
+		default:
 			status = "FAIL"
 			failed++
-		} else {
-			passed++
 		}
 		lines = append(lines, fmt.Sprintf(
 			"[%s] (%s) %-45s %s",
 			status, result.Check.Severity, result.Check.Name, result.Message,
 		))
 	}
-	lines = append(lines, fmt.Sprintf("%d passed, %d failed", passed, failed))
+	summary := fmt.Sprintf("%d passed, %d failed", passed, failed)
+	if progressing > 0 {
+		summary = fmt.Sprintf("%d passed, %d progressing, %d failed", passed, progressing, failed)
+	}
+	lines = append(lines, summary)
 	return lines
 }

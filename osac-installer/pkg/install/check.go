@@ -46,8 +46,19 @@ type Status int
 const (
 	// Pass means the check's condition holds.
 	Pass Status = iota
-	// Failed means the check's condition does not hold.
+	// Failed means the check's condition does not hold, and nothing
+	// suggests it's about to: a missing prerequisite, a Job that actually
+	// failed, a CSV that was never created.
 	Failed
+	// Progressing means the condition doesn't hold yet, but there's
+	// concrete evidence it's actively moving toward Pass: a CSV that
+	// exists but hasn't reached Succeeded, a Deployment that exists but
+	// hasn't reached its desired replica count, a Job that's still
+	// running, a namespace that doesn't exist yet but is expected to be
+	// created imminently. Distinguishing this from Failed is what lets
+	// `osac install status` show "installing" rather than a false alarm
+	// while a rollout is still in progress.
+	Progressing
 )
 
 // String implements fmt.Stringer.
@@ -57,6 +68,8 @@ func (s Status) String() string {
 		return "pass"
 	case Failed:
 		return "fail"
+	case Progressing:
+		return "progressing"
 	default:
 		return "unknown"
 	}
@@ -148,12 +161,15 @@ func RunAll(ctx context.Context, clients *Clients, checks []Check) []Result {
 }
 
 // AnyRequiredFailed reports whether any Required-severity check in results
-// failed. `osac install validate` uses this to decide its exit code;
-// `osac install discover` ignores it and reports every result regardless of
-// severity.
+// is not Pass -- Failed or still Progressing. `osac install validate` uses
+// this to decide its exit code: a Required prerequisite that's merely
+// Progressing (an Operator mid-install) still means the cluster isn't
+// ready to install OSAC *right now*, the question validate actually
+// answers. `osac install discover` ignores it and reports every result
+// regardless of severity.
 func AnyRequiredFailed(results []Result) bool {
 	for _, result := range results {
-		if result.Status == Failed && result.Check.Severity == Required {
+		if result.Status != Pass && result.Check.Severity == Required {
 			return true
 		}
 	}

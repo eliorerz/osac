@@ -99,6 +99,26 @@ var _ = Describe("summaryLine", func() {
 		Expect(line).To(ContainSubstring("0 passed, 1 failed"))
 		Expect(line).To(ContainSubstring(ansiEscape))
 	})
+
+	It("breaks out a separate progressing count instead of folding it into passed or failed", func() {
+		line := summaryLine([]install.Result{
+			{Check: passingCheck, Status: install.Pass},
+			{Check: requiredCheck, Status: install.Progressing},
+		})
+
+		Expect(line).To(ContainSubstring("1 passed, 1 progressing, 0 failed"))
+	})
+})
+
+var _ = Describe("statusLabel and statusColor", func() {
+	It("labels and colors Progressing distinctly from Pass and Failed", func() {
+		result := install.Result{Check: requiredCheck, Status: install.Progressing}
+
+		Expect(statusLabel(result.Status)).To(Equal("PROGRESSING"))
+		Expect(statusColor(result)).To(Equal(colorCyan))
+		Expect(statusColor(result)).NotTo(Equal(colorRed))
+		Expect(statusColor(result)).NotTo(Equal(colorGreen))
+	})
 })
 
 var _ = Describe("Table", func() {

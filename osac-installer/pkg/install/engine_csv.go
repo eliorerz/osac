@@ -88,7 +88,7 @@ func buildCSVSucceededCheck(entry matrixEntry) (Check, error) {
 			}
 			phase, _, _ := unstructured.NestedString(found.Object, "status", "phase")
 			if phase != "Succeeded" {
-				return Failed, fmt.Sprintf("%s CSV %q is not ready yet (status.phase=%q, want Succeeded)", name, found.GetName(), phase)
+				return Progressing, fmt.Sprintf("%s is installing (CSV %q, status.phase=%q)", name, found.GetName(), phase)
 			}
 			if minVersion == nil {
 				return Pass, fmt.Sprintf("%s is installed and ready (%s)", name, found.GetName())
