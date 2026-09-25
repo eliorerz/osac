@@ -15,6 +15,7 @@ package status
 
 import (
 	"fmt"
+	stdcolor "image/color"
 	"strings"
 
 	"charm.land/bubbles/v2/progress"
@@ -26,12 +27,21 @@ import (
 // Colors match render.Table's STATUS column, for a consistent look across
 // `osac install discover/validate/status`.
 const (
-	colorGreen  = "10" // Pass
-	colorRed    = "9"  // Fail, Required
-	colorYellow = "11" // Fail, Warning
-	colorBanner = "99" // Purple -- matches the progress bar's default blend
+	colorGreen  = "10" // Pass; also the progress bar once everything is ready
+	colorRed    = "9"  // Fail, Required; also the progress bar early on
+	colorYellow = "11" // Fail, Warning; also the progress bar approaching ready
+	colorBanner = "99" // Purple
 	colorBorder = "99"
 	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
+)
+
+// progressColorThresholds: below barColorLowThreshold the bar is red, below
+// barColorHighThreshold it's yellow, at or above it it's green -- the same
+// red/yellow/green a viewer already reads from the per-check icons, applied
+// to the overall ready-percentage.
+const (
+	barColorLowThreshold  = 0.5
+	barColorHighThreshold = 1.0
 )
 
 const (
@@ -135,7 +145,10 @@ func progressLine(results []install.Result, width int) string {
 	if barWidth < minBarWidth {
 		barWidth = minBarWidth
 	}
-	bar := progress.New(progress.WithDefaultBlend(), progress.WithWidth(barWidth))
+	bar := progress.New(
+		progress.WithColorFunc(func(total, _ float64) stdcolor.Color { return progressColor(total) }),
+		progress.WithWidth(barWidth),
+	)
 
 	passed := 0
 	for _, result := range results {
@@ -150,6 +163,20 @@ func progressLine(results []install.Result, width int) string {
 	}
 
 	return fmt.Sprintf("%s  %d/%d ready", bar.ViewAs(percent), passed, total)
+}
+
+// progressColor picks red/yellow/green for the progress bar based on the
+// overall ready-percentage, the same three colors a viewer already reads
+// from the per-check ✓/✗ icons.
+func progressColor(percent float64) stdcolor.Color {
+	switch {
+	case percent >= barColorHighThreshold:
+		return lipgloss.Color(colorGreen)
+	case percent >= barColorLowThreshold:
+		return lipgloss.Color(colorYellow)
+	default:
+		return lipgloss.Color(colorRed)
+	}
 }
 
 // statusLine renders one check as "<icon> <name, padded/truncated> <message,

@@ -16,6 +16,7 @@ package status
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
@@ -108,6 +109,22 @@ var _ = Describe("padName", func() {
 		got := padName("abcdefghij", 6)
 		Expect([]rune(got)).To(HaveLen(6))
 		Expect(got).To(HaveSuffix("…"))
+	})
+})
+
+var _ = Describe("progressColor", func() {
+	It("is red below the low threshold", func() {
+		Expect(progressColor(0)).To(Equal(lipgloss.Color(colorRed)))
+		Expect(progressColor(0.49)).To(Equal(lipgloss.Color(colorRed)))
+	})
+
+	It("is yellow from the low threshold up to (not including) fully ready", func() {
+		Expect(progressColor(0.5)).To(Equal(lipgloss.Color(colorYellow)))
+		Expect(progressColor(0.99)).To(Equal(lipgloss.Color(colorYellow)))
+	})
+
+	It("is green once fully ready", func() {
+		Expect(progressColor(1.0)).To(Equal(lipgloss.Color(colorGreen)))
 	})
 })
 
