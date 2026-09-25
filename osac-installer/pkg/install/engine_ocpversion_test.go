@@ -22,7 +22,7 @@ import (
 )
 
 var _ = Describe("buildOCPVersionRangeCheck", func() {
-	entry := matrixEntry{ID: "ocp-version", Kind: "ocp-version-range", Severity: "warning", MinVersion: "4.22.4"}
+	entry := matrixEntry{ID: "ocp-version", Kind: "ocp-version-range", Severity: "warning", Category: "resource", MinVersion: "4.22.4"}
 
 	It("rejects an entry with no minVersion", func() {
 		_, err := buildOCPVersionRangeCheck(matrixEntry{ID: "bad", Severity: "warning"})
@@ -30,7 +30,9 @@ var _ = Describe("buildOCPVersionRangeCheck", func() {
 	})
 
 	It("rejects an entry with an unparseable minVersion", func() {
-		_, err := buildOCPVersionRangeCheck(matrixEntry{ID: "bad", Severity: "warning", MinVersion: "not-a-version"})
+		_, err := buildOCPVersionRangeCheck(matrixEntry{
+			ID: "bad", Severity: "warning", Category: "resource", MinVersion: "not-a-version",
+		})
 		Expect(err).To(HaveOccurred())
 	})
 

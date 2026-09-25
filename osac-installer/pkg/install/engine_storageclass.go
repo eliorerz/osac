@@ -33,10 +33,15 @@ func buildStorageClassDefaultCheck(entry matrixEntry) (Check, error) {
 	if err != nil {
 		return Check{}, err
 	}
+	category, err := parseCategory(entry.Category)
+	if err != nil {
+		return Check{}, err
+	}
 	return Check{
 		Name:        entry.ID,
 		Description: "a default StorageClass exists",
 		Severity:    severity,
+		Category:    category,
 		Run: func(ctx context.Context, clients *Clients) (Status, string) {
 			classes, err := clients.Typed.StorageV1().StorageClasses().List(ctx, metav1.ListOptions{})
 			if err != nil {

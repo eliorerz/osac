@@ -53,6 +53,7 @@ func buildSecretExistsCheck(ref SecretRef) Check {
 		Name:        fmt.Sprintf("secret-%s-%s", ref.Namespace, ref.Name),
 		Description: fmt.Sprintf("Secret %s/%s exists", ref.Namespace, ref.Name),
 		Severity:    Required,
+		Category:    ResourceCategory,
 		Run: func(ctx context.Context, clients *Clients) (Status, string) {
 			secret, err := clients.Typed.CoreV1().Secrets(ref.Namespace).Get(ctx, ref.Name, metav1.GetOptions{})
 			switch {

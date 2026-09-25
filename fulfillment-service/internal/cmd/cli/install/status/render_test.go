@@ -14,6 +14,8 @@ language governing permissions and limitations under the License.
 package status
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
 
@@ -21,9 +23,9 @@ import (
 )
 
 var (
-	passingCheck  = install.Check{Name: "cert-manager-crds", Severity: install.Required}
-	warningCheck  = install.Check{Name: "default-storageclass", Severity: install.Warning}
-	requiredCheck = install.Check{Name: "aap-operator", Severity: install.Required}
+	passingCheck  = install.Check{Name: "cert-manager-crds", Severity: install.Required, Category: install.ResourceCategory}
+	warningCheck  = install.Check{Name: "default-storageclass", Severity: install.Warning, Category: install.ResourceCategory}
+	requiredCheck = install.Check{Name: "aap-operator", Severity: install.Required, Category: install.OperatorCategory}
 )
 
 var _ = Describe("renderStatus", func() {
@@ -106,6 +108,54 @@ var _ = Describe("padName", func() {
 		got := padName("abcdefghij", 6)
 		Expect([]rune(got)).To(HaveLen(6))
 		Expect(got).To(HaveSuffix("…"))
+	})
+})
+
+var _ = Describe("sections", func() {
+	It("groups results under RESOURCES and OPERATORS headers, resources first", func() {
+		results := []install.Result{
+			{Check: passingCheck, Status: install.Pass},
+			{Check: requiredCheck, Status: install.Failed},
+		}
+
+		got := sections(results, 76)
+
+		Expect(got).To(ContainSubstring("RESOURCES"))
+		Expect(got).To(ContainSubstring("OPERATORS"))
+		Expect(strings.Index(got, "RESOURCES")).To(BeNumerically("<", strings.Index(got, "OPERATORS")))
+	})
+
+	It("omits a section header when no result belongs to that category", func() {
+		results := []install.Result{{Check: passingCheck, Status: install.Pass}}
+
+		got := sections(results, 76)
+
+		Expect(got).To(ContainSubstring("RESOURCES"))
+		Expect(got).NotTo(ContainSubstring("OPERATORS"))
+	})
+})
+
+var _ = Describe("osacFont", func() {
+	It("has every glyph at a consistent height and per-glyph row width", func() {
+		for letter, glyph := range osacFont {
+			Expect(glyph).To(HaveLen(osacFontHeight), "letter %q", string(letter))
+			width := len([]rune(glyph[0]))
+			for i, row := range glyph {
+				Expect([]rune(row)).To(HaveLen(width), "letter %q row %d", string(letter), i)
+			}
+		}
+	})
+})
+
+var _ = Describe("banner", func() {
+	It("renders osacFontHeight lines plus a trailing blank line", func() {
+		got := banner()
+
+		lines := strings.Split(got, "\n")
+		// osacFontHeight content lines + 1 blank line from the trailing
+		// "\n\n" + the empty string split produces after the final "\n".
+		Expect(lines).To(HaveLen(osacFontHeight + 2))
+		Expect(lines[osacFontHeight]).To(BeEmpty())
 	})
 })
 

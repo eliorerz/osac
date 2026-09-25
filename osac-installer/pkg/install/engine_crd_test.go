@@ -26,6 +26,7 @@ var _ = Describe("buildCRDExistsCheck", func() {
 		ID:          "widgets-crd",
 		Kind:        "crd-exists",
 		Severity:    "required",
+		Category:    "resource",
 		CRD:         "widgets.example.com",
 		Remediation: "install the Widget Operator",
 	}

@@ -36,6 +36,10 @@ func buildResourceFieldEqualsCheck(entry matrixEntry) (Check, error) {
 	if err != nil {
 		return Check{}, err
 	}
+	category, err := parseCategory(entry.Category)
+	if err != nil {
+		return Check{}, err
+	}
 	gvr := schema.GroupVersionResource{Group: entry.Group, Version: entry.Version, Resource: entry.Resource}
 	notFoundMessage := entry.NotFoundMessage
 	if notFoundMessage == "" {
@@ -49,6 +53,7 @@ func buildResourceFieldEqualsCheck(entry matrixEntry) (Check, error) {
 		Name:        entry.ID,
 		Description: fmt.Sprintf("%s has %v set to %v", entry.Resource, entry.Field, entry.Expected),
 		Severity:    severity,
+		Category:    category,
 		Run: func(ctx context.Context, clients *Clients) (Status, string) {
 			list, err := clients.Dynamic.Resource(gvr).List(ctx, metav1.ListOptions{})
 			if err != nil {

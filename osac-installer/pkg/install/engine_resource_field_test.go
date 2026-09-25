@@ -31,6 +31,7 @@ var _ = Describe("buildResourceFieldEqualsCheck", func() {
 		ID:              "provisioning-watch-all-namespaces",
 		Kind:            "resource-field-equals",
 		Severity:        "required",
+		Category:        "resource",
 		Group:           "metal3.io",
 		Version:         "v1alpha1",
 		Resource:        "provisionings",

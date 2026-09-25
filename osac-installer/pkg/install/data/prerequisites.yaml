@@ -1,4 +1,4 @@
-# Prerequisite matrix for `osac install discover`/`validate`.
+# Prerequisite matrix for `osac install discover`/`validate`/`status`.
 #
 # This is the single source of truth for what OSAC needs on a Hub cluster
 # before it installs: every Operator name, namespace, OLM package name, and
@@ -19,16 +19,22 @@
 # toggle: an additional, cluster-state-undiscoverable gate -- mirrors a
 # Helm value that decides whether this prerequisite is even in play (e.g.
 # Metal3 is one of several possible BMaaS backends).
+# category: "operator" for an OLM-managed Operator (csv-succeeded checks),
+# "resource" for anything else (a CRD, a StorageClass, the cluster version,
+# a Metal3 CR) -- purely a display grouping (`osac install status`'s
+# Resources/Operators sections), no effect on which checks run.
 
 - id: ocp-version
   kind: ocp-version-range
   severity: warning
+  category: resource
   requiredFor: [all]
   minVersion: "4.22.4"
 
 - id: cert-manager-crds
   kind: crd-exists
   severity: required
+  category: resource
   requiredFor: [all]
   crd: certificates.cert-manager.io
   remediation: "install the cert-manager Operator for Red Hat OpenShift before deploying OSAC"
@@ -36,6 +42,7 @@
 - id: cert-manager-operator
   kind: csv-succeeded
   severity: required
+  category: operator
   requiredFor: [all]
   displayName: "cert-manager Operator for Red Hat OpenShift"
   namespace: cert-manager-operator
@@ -46,6 +53,7 @@
 - id: aap-operator
   kind: csv-succeeded
   severity: required
+  category: operator
   requiredFor: [all]
   displayName: "Red Hat Ansible Automation Platform Operator"
   namespace: ansible-aap
@@ -56,6 +64,7 @@
 - id: kafka-operator
   kind: csv-succeeded
   severity: required
+  category: operator
   requiredFor: [metering]
   displayName: "Streams for Apache Kafka"
   namespace: osac-kafka
@@ -65,6 +74,7 @@
 - id: cnv-operator
   kind: csv-succeeded
   severity: required
+  category: operator
   requiredFor: [vmaas]
   displayName: "OpenShift Virtualization"
   namespace: openshift-cnv
@@ -74,6 +84,7 @@
 - id: metallb-operator
   kind: csv-succeeded
   severity: required
+  category: operator
   requiredFor: [vmaas, caas]
   displayName: "MetalLB Operator"
   namespace: metallb-system
@@ -83,6 +94,7 @@
 - id: mce-operator
   kind: csv-succeeded
   severity: required
+  category: operator
   requiredFor: [caas]
   displayName: "multicluster engine for Kubernetes Operator"
   namespace: multicluster-engine
@@ -91,12 +103,14 @@
 
 - id: default-storageclass
   kind: storageclass-default
-  severity: warning
+  severity: required
+  category: resource
   requiredFor: [all]
 
 - id: metal3-baremetalhost-crd
   kind: crd-exists
   severity: required
+  category: resource
   requiredFor: [bmaas]
   toggle: metal3
   crd: baremetalhosts.metal3.io
@@ -105,6 +119,7 @@
 - id: metal3-provisioning-watch-all-namespaces
   kind: resource-field-equals
   severity: required
+  category: resource
   requiredFor: [bmaas]
   toggle: metal3
   group: metal3.io

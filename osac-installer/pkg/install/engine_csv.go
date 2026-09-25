@@ -45,6 +45,10 @@ func buildCSVSucceededCheck(entry matrixEntry) (Check, error) {
 	if err != nil {
 		return Check{}, err
 	}
+	category, err := parseCategory(entry.Category)
+	if err != nil {
+		return Check{}, err
+	}
 	var minVersion *semver.Version
 	if entry.MinVersion != "" {
 		minVersion, err = semver.NewVersion(entry.MinVersion)
@@ -64,6 +68,7 @@ func buildCSVSucceededCheck(entry matrixEntry) (Check, error) {
 		Name:        entry.ID,
 		Description: fmt.Sprintf("%s is installed and ready", name),
 		Severity:    severity,
+		Category:    category,
 		Run: func(ctx context.Context, clients *Clients) (Status, string) {
 			list, err := clients.Dynamic.Resource(clusterServiceVersionGVR).Namespace(entry.Namespace).List(ctx, metav1.ListOptions{})
 			if err != nil {

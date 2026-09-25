@@ -42,12 +42,17 @@ func buildOCPVersionRangeCheck(entry matrixEntry) (Check, error) {
 	if err != nil {
 		return Check{}, err
 	}
+	category, err := parseCategory(entry.Category)
+	if err != nil {
+		return Check{}, err
+	}
 	minVersion, err := semver.NewVersion(entry.MinVersion)
 	if err != nil {
 		return Check{}, fmt.Errorf("invalid minVersion %q: %w", entry.MinVersion, err)
 	}
 	return Check{
 		Name:        entry.ID,
+		Category:    category,
 		Description: fmt.Sprintf("the cluster is running OpenShift %s or later", minVersion),
 		Severity:    severity,
 		Run: func(ctx context.Context, clients *Clients) (Status, string) {

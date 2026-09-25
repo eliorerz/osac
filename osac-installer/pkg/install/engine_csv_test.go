@@ -26,6 +26,7 @@ var _ = Describe("buildCSVSucceededCheck", func() {
 		ID:            "cnv-operator",
 		Kind:          "csv-succeeded",
 		Severity:      "required",
+		Category:      "operator",
 		DisplayName:   "OpenShift Virtualization",
 		Namespace:     "openshift-cnv",
 		PackagePrefix: "kubevirt-hyperconverged",
@@ -39,7 +40,8 @@ var _ = Describe("buildCSVSucceededCheck", func() {
 
 	It("rejects an entry with an unparseable minVersion", func() {
 		_, err := buildCSVSucceededCheck(matrixEntry{
-			ID: "bad", Severity: "required", Namespace: "ns", PackagePrefix: "pkg", MinVersion: "not-a-version",
+			ID: "bad", Severity: "required", Category: "operator",
+			Namespace: "ns", PackagePrefix: "pkg", MinVersion: "not-a-version",
 		})
 		Expect(err).To(HaveOccurred())
 	})
@@ -104,7 +106,7 @@ var _ = Describe("buildCSVSucceededCheck", func() {
 
 	It("passes with no minVersion set, regardless of spec.version", func() {
 		check, err := buildCSVSucceededCheck(matrixEntry{
-			ID: "no-min", Severity: "required", Namespace: "ns", PackagePrefix: "pkg",
+			ID: "no-min", Severity: "required", Category: "operator", Namespace: "ns", PackagePrefix: "pkg",
 		})
 		Expect(err).NotTo(HaveOccurred())
 		clients := newFakeClients(nil, []runtime.Object{

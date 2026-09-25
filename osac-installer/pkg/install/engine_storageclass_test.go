@@ -24,12 +24,12 @@ import (
 )
 
 var _ = Describe("buildStorageClassDefaultCheck", func() {
-	entry := matrixEntry{ID: "default-storageclass", Kind: "storageclass-default", Severity: "warning"}
+	entry := matrixEntry{ID: "default-storageclass", Kind: "storageclass-default", Severity: "required", Category: "resource"}
 
-	It("is a Warning check, not Required", func() {
+	It("is a Required check", func() {
 		check, err := buildStorageClassDefaultCheck(entry)
 		Expect(err).NotTo(HaveOccurred())
-		Expect(check.Severity).To(Equal(Warning))
+		Expect(check.Severity).To(Equal(Required))
 	})
 
 	It("passes and names the class when a default StorageClass exists", func() {

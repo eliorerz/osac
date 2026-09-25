@@ -29,40 +29,102 @@ const (
 	colorGreen  = "10" // Pass
 	colorRed    = "9"  // Fail, Required
 	colorYellow = "11" // Fail, Warning
+	colorBanner = "99" // Purple -- matches the progress bar's default blend
+	colorBorder = "99"
+	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
 )
 
 const (
 	defaultWidth    = 80
+	frameMaxWidth   = 100
+	frameMinWidth   = 24
+	frameOverhead   = 4 // border (2 cols) + horizontal padding (2 cols)
 	maxBarWidth     = 60
 	minBarWidth     = 10
 	nameColWidth    = 36
-	barWidthTrim    = 4 // margin subtracted from the terminal width for the bar
+	barWidthTrim    = 4 // margin subtracted from the content width for the bar
 	layoutOverhead  = 3 // icon + the two spaces separating icon/name/message
 	minMessageWidth = 10
 )
 
-// renderStatus renders results as a progress bar (passed/total) followed by
-// one line per check. Pure and stateless -- given the same results and
-// width, it always renders the same string -- so it's testable without a
-// real terminal or tea.Program, and reusable by both the one-shot render
-// path and the watch-mode tea.Model's View.
+// renderStatus renders results as a framed dashboard: a small "OSAC" banner,
+// a progress bar (passed/total), and one Resources/Operators section per
+// install.Category, fitted to width. Pure and stateless -- given the same
+// results and width, it always renders the same string -- so it's testable
+// without a real terminal or tea.Program, and reusable by both the one-shot
+// render path and the watch-mode tea.Model's View.
 func renderStatus(results []install.Result, width int) string {
 	if width <= 0 {
 		width = defaultWidth
 	}
+	frameWidth := width
+	if frameWidth > frameMaxWidth {
+		frameWidth = frameMaxWidth
+	}
+	if frameWidth < frameMinWidth {
+		frameWidth = frameMinWidth
+	}
+	contentWidth := frameWidth - frameOverhead
 
 	var b strings.Builder
-	b.WriteString(progressLine(results, width))
+	b.WriteString(banner())
+	b.WriteString(progressLine(results, contentWidth))
 	b.WriteString("\n\n")
+	b.WriteString(sections(results, contentWidth))
+
+	// Every line written above (banner rows, the progress bar, each
+	// statusLine) is already sized to fit within contentWidth, so the frame
+	// renders them as-is rather than re-truncating already-ANSI-styled
+	// multi-line content here too -- safer than trusting a second
+	// width-clamping pass to handle escape codes correctly across lines.
+	content := strings.TrimRight(b.String(), "\n")
+	frame := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color(colorBorder)).
+		Padding(0, 1).
+		Width(frameWidth)
+	return frame.Render(content)
+}
+
+// sections groups results into Resources/Operators (install.Category),
+// rendering only the sections that actually have entries -- a --services
+// selection that never includes any Operator-category check (e.g. no
+// services requested at all) shouldn't print an empty "OPERATORS" heading.
+func sections(results []install.Result, width int) string {
 	if len(results) == 0 {
-		b.WriteString("No checks to run.\n")
-		return b.String()
+		return "No checks to run.\n"
 	}
+	var b strings.Builder
+	writeSection(&b, "RESOURCES", filterCategory(results, install.ResourceCategory), width)
+	writeSection(&b, "OPERATORS", filterCategory(results, install.OperatorCategory), width)
+	return b.String()
+}
+
+func writeSection(b *strings.Builder, title string, results []install.Result, width int) {
+	if len(results) == 0 {
+		return
+	}
+	b.WriteString(sectionHeader(title))
+	b.WriteString("\n")
 	for _, result := range results {
 		b.WriteString(statusLine(result, width))
 		b.WriteString("\n")
 	}
-	return b.String()
+	b.WriteString("\n")
+}
+
+func filterCategory(results []install.Result, category install.Category) []install.Result {
+	var out []install.Result
+	for _, result := range results {
+		if result.Check.Category == category {
+			out = append(out, result)
+		}
+	}
+	return out
+}
+
+func sectionHeader(title string) string {
+	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorHeader)).Render(title)
 }
 
 func progressLine(results []install.Result, width int) string {
@@ -144,4 +206,66 @@ func statusIcon(result install.Result) (string, lipgloss.Style) {
 		return "✗", bold.Foreground(lipgloss.Color(colorYellow))
 	}
 	return "✗", bold.Foreground(lipgloss.Color(colorRed))
+}
+
+// osacFont is a small 6-row block font, just the letters OSAC needs. Every
+// glyph's rows are the same rune-length (verified by TestOSACFontGlyphsAlign
+// in render_test.go), so banner() can concatenate them column-wise without
+// hand-aligning a giant multi-line string by eye.
+var osacFont = map[rune][]string{
+	'O': {
+		" ████ ",
+		"██  ██",
+		"██  ██",
+		"██  ██",
+		"██  ██",
+		" ████ ",
+	},
+	'S': {
+		" █████",
+		"██    ",
+		" ████ ",
+		"    ██",
+		"    ██",
+		"█████ ",
+	},
+	'A': {
+		" ████ ",
+		"██  ██",
+		"██████",
+		"██  ██",
+		"██  ██",
+		"██  ██",
+	},
+	'C': {
+		" █████",
+		"██    ",
+		"██    ",
+		"██    ",
+		"██    ",
+		" █████",
+	},
+}
+
+// osacFontHeight is the row count every osacFont glyph has.
+const osacFontHeight = 6
+
+// banner renders "OSAC" as block letters, colored, with a trailing blank
+// line separating it from the rest of the view.
+func banner() string {
+	rows := make([]string, osacFontHeight)
+	for _, r := range "OSAC" {
+		glyph := osacFont[r]
+		for i := range rows {
+			rows[i] += glyph[i] + " "
+		}
+	}
+	style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorBanner))
+	var b strings.Builder
+	for _, row := range rows {
+		b.WriteString(style.Render(row))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	return b.String()
 }

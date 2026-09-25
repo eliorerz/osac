@@ -190,11 +190,18 @@ var _ = Describe("Validate command execution", func() {
 		Expect(stderr.String()).To(ContainSubstring("not ready to install OSAC"))
 	})
 
-	It("does not fail on a Warning-only failure (default StorageClass missing, everything else present)", func() {
+	It("does not fail on a Warning-only failure (unreadable OCP version, everything else present)", func() {
 		scheme := runtime.NewScheme()
 		clients := &install.Clients{
-			// No StorageClass at all -> default-storageclass (Warning) fails.
-			Typed: fake.NewSimpleClientset(),
+			Typed: fake.NewSimpleClientset(&storagev1.StorageClass{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:        "standard",
+					Annotations: map[string]string{"storageclass.kubernetes.io/is-default-class": "true"},
+				},
+			}),
+			// No ClusterVersion object -> ocp-version (Warning) fails; every
+			// other "all"-scoped entry (including default-storageclass,
+			// Required as of this test) passes.
 			Dynamic: dynamicfake.NewSimpleDynamicClientWithCustomListKinds(
 				scheme,
 				listKinds,
@@ -211,7 +218,7 @@ var _ = Describe("Validate command execution", func() {
 
 		Expect(err).ToNot(HaveOccurred())
 		Expect(stdout.String()).To(ContainSubstring("FAIL")) // reported...
-		Expect(stdout.String()).To(ContainSubstring("default-storageclass"))
+		Expect(stdout.String()).To(ContainSubstring("ocp-version"))
 		// ...but did not block the exit code, since it's Warning severity.
 	})
 

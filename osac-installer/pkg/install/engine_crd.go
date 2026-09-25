@@ -56,10 +56,15 @@ func buildCRDExistsCheck(entry matrixEntry) (Check, error) {
 	if err != nil {
 		return Check{}, err
 	}
+	category, err := parseCategory(entry.Category)
+	if err != nil {
+		return Check{}, err
+	}
 	return Check{
 		Name:        entry.ID,
 		Description: fmt.Sprintf("CRD %q is registered", entry.CRD),
 		Severity:    severity,
+		Category:    category,
 		Run: func(ctx context.Context, clients *Clients) (Status, string) {
 			return checkCRDExists(ctx, clients, entry.CRD, entry.Remediation)
 		},

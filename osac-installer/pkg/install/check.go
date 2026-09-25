@@ -62,6 +62,32 @@ func (s Status) String() string {
 	}
 }
 
+// Category groups a Check for display purposes (e.g. `osac install
+// status`'s Resources/Operators sections). It has no effect on which
+// checks run or how they gate `osac install validate`.
+type Category int
+
+const (
+	// ResourceCategory is a CRD, StorageClass, cluster version, or other
+	// non-Operator resource.
+	ResourceCategory Category = iota
+	// OperatorCategory is an OLM-managed Operator, checked via its
+	// ClusterServiceVersion.
+	OperatorCategory
+)
+
+// String implements fmt.Stringer.
+func (c Category) String() string {
+	switch c {
+	case ResourceCategory:
+		return "resource"
+	case OperatorCategory:
+		return "operator"
+	default:
+		return "unknown"
+	}
+}
+
 // Check is a single prerequisite probe against the target Hub cluster. Run
 // must be read-only: it must never create, update, or delete cluster state.
 type Check struct {
@@ -74,6 +100,8 @@ type Check struct {
 	Description string
 	// Severity determines whether a Failed blocks `osac install validate`.
 	Severity Severity
+	// Category groups this check for display purposes; see Category.
+	Category Category
 	// Run executes the check against the given clients and returns its
 	// status and a human-readable message explaining that status.
 	Run func(ctx context.Context, clients *Clients) (Status, string)

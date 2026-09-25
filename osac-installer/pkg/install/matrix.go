@@ -39,6 +39,8 @@ type matrixEntry struct {
 	Kind string `yaml:"kind"`
 	// Severity is "required" or "warning"; see parseSeverity.
 	Severity string `yaml:"severity"`
+	// Category is "resource" or "operator"; see parseCategory. Display-only.
+	Category string `yaml:"category"`
 	// RequiredFor lists the OSAC services that need this prerequisite:
 	// "vmaas", "caas", "bmaas", "maas", "metering", or "all".
 	RequiredFor []string `yaml:"requiredFor"`
@@ -94,6 +96,18 @@ func parseSeverity(value string) (Severity, error) {
 		return Warning, nil
 	default:
 		return 0, fmt.Errorf("unknown severity %q (want \"required\" or \"warning\")", value)
+	}
+}
+
+// parseCategory converts the matrix's plain-text category into a Category.
+func parseCategory(value string) (Category, error) {
+	switch value {
+	case "resource":
+		return ResourceCategory, nil
+	case "operator":
+		return OperatorCategory, nil
+	default:
+		return 0, fmt.Errorf("unknown category %q (want \"resource\" or \"operator\")", value)
 	}
 }
 

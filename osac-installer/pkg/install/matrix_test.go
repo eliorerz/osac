@@ -37,6 +37,9 @@ var _ = Describe("the embedded prerequisites matrix", func() {
 			_, err := parseSeverity(entry.Severity)
 			Expect(err).NotTo(HaveOccurred(), "entry %q has an invalid severity %q", entry.ID, entry.Severity)
 
+			_, err = parseCategory(entry.Category)
+			Expect(err).NotTo(HaveOccurred(), "entry %q has an invalid category %q", entry.ID, entry.Category)
+
 			Expect(entry.RequiredFor).NotTo(BeEmpty(), "entry %q has no requiredFor", entry.ID)
 			for _, service := range entry.RequiredFor {
 				Expect(knownRequiredFor[service]).To(BeTrue(), "entry %q: unknown requiredFor value %q", entry.ID, service)
