@@ -3,9 +3,6 @@
 {{- if .Values.aap.configAsCode.manifestSecret }}
 {{- $secretNames = append $secretNames .Values.aap.configAsCode.manifestSecret }}
 {{- end }}
-{{- range .Values.service.database.connection }}
-{{- $secretNames = append $secretNames .secret.name }}
-{{- end }}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -55,9 +52,17 @@ spec:
         {{- if .Values.aap.configAsCode.manifestSecret }}
         - --require-secret={{ .Release.Namespace }}/{{ .Values.aap.configAsCode.manifestSecret }}:license.zip
         {{- end }}
-        {{- range .Values.service.database.connection }}
-        - --require-secret={{ $.Release.Namespace }}/{{ .secret.name }}
-        {{- end }}
+        # Deliberately NOT checking service.database.connection's secrets
+        # (osac-db-config/osac-db-client-cert): those are created by this
+        # same chart's own workload-db-secrets.yaml, a plain (non-hook)
+        # resource -- and Helm always creates every pre-install hook (this
+        # one included, at the earliest weight) before any plain resource.
+        # Requiring them here is structurally unsatisfiable, in every
+        # environment, regardless of bundled vs. external Postgres: they
+        # can never exist yet at this point in the install. The AAP license
+        # secret above is different -- install-osac creates it via `oc
+        # create secret` before `helm upgrade --install` even runs, so it
+        # genuinely does pre-exist by the time this hook fires.
       backoffLimit: 0
 ---
 apiVersion: v1
@@ -141,10 +146,9 @@ rules:
 # Unlike the ClusterRole above, this is deliberately narrow: get-only
 # (never list, so the hook can't enumerate every Secret in the namespace)
 # on exactly the Secret names this install's own values reference
-# (aap.configAsCode.manifestSecret, service.database.connection[].secret.name)
-# -- computed from the same values Helm already renders the Job's
-# --require-secret args from, so this list can never drift from what's
-# actually checked.
+# (aap.configAsCode.manifestSecret) -- computed from the same value Helm
+# already renders the Job's --require-secret arg from, so this list can
+# never drift from what's actually checked.
 - apiGroups: [""]
   resources: ["secrets"]
   verbs: ["get"]
