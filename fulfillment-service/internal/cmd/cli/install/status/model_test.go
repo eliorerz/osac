@@ -16,6 +16,8 @@ package status
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -49,9 +51,7 @@ var _ = Describe("watchModel", func() {
 		cmd := m.Init()
 		Expect(cmd).NotTo(BeNil())
 
-		msg := cmd()
-		results, ok := msg.(checkResultsMsg)
-		Expect(ok).To(BeTrue())
+		results := findCheckResultsMsg(cmd)
 		Expect(results.err).NotTo(HaveOccurred())
 		Expect(results.results).To(HaveLen(2)) // the namespace itself + the Deployment
 		names := map[string]bool{}
@@ -68,14 +68,17 @@ var _ = Describe("watchModel", func() {
 		clientsWithDynamic := &install.Clients{Typed: clients.Typed, Dynamic: emptyDynamicClient()}
 		withChecks := newWatchModel(context.Background(), clientsWithDynamic, "osac", checks, time.Second)
 
-		msg := withChecks.Init()()
+		results := findCheckResultsMsg(withChecks.Init())
 
-		results, ok := msg.(checkResultsMsg)
-		Expect(ok).To(BeTrue())
 		Expect(results.err).NotTo(HaveOccurred())
 		// namespace + Deployment + every "requiredFor: [all]" prerequisite,
 		// all failing since none of their cluster state was seeded.
 		Expect(len(results.results)).To(BeNumerically(">", 2))
+	})
+
+	It("also kicks off the spinner animation from Init", func() {
+		msg := findMsg[spinnerTickMsg](m.Init())
+		Expect(msg).NotTo(BeZero())
 	})
 
 	It("stores results and schedules the next tick on checkResultsMsg", func() {
@@ -112,6 +115,49 @@ var _ = Describe("watchModel", func() {
 		Expect(next.(watchModel).width).To(Equal(120))
 	})
 
+	It("clips the view to a small terminal's height instead of overflowing it unscrollably", func() {
+		var results []install.Result
+		for i := range 30 {
+			results = append(results, install.Result{
+				Check:  install.Check{Name: fmt.Sprintf("service-%d", i), Category: install.ServiceCategory},
+				Status: install.Pass,
+			})
+		}
+		m.results = results
+		next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
+		small := next.(watchModel)
+
+		lines := strings.Split(small.View().Content, "\n")
+
+		Expect(len(lines)).To(BeNumerically("<=", 10))
+		Expect(small.View().Content).To(ContainSubstring("scroll"))
+	})
+
+	It("scrolls down on the down arrow once a real terminal size is known", func() {
+		var results []install.Result
+		for i := range 30 {
+			results = append(results, install.Result{
+				Check:  install.Check{Name: fmt.Sprintf("service-%d", i), Category: install.ServiceCategory},
+				Status: install.Pass,
+			})
+		}
+		m.results = results
+		next, _ := m.Update(tea.WindowSizeMsg{Width: 120, Height: 10})
+		sized := next.(watchModel)
+		before := sized.View().Content
+
+		scrolled, cmd := sized.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+
+		Expect(cmd).To(BeNil()) // viewport scrolling is synchronous, no async follow-up
+		Expect(scrolled.(watchModel).View().Content).NotTo(Equal(before))
+	})
+
+	It("does not attempt to scroll before any WindowSizeMsg has arrived (haveSize false)", func() {
+		_, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyDown})
+
+		Expect(cmd).To(BeNil())
+	})
+
 	It("quits on q", func() {
 		_, cmd := m.Update(tea.KeyPressMsg{Text: "q", Code: 'q'})
 		Expect(cmd).NotTo(BeNil())
@@ -141,4 +187,51 @@ var _ = Describe("watchModel", func() {
 		Expect(v.AltScreen).To(BeTrue())
 		Expect(v.Content).To(ContainSubstring("namespace not found"))
 	})
+
+	It("advances the spinner frame on spinnerTickMsg and schedules the next tick", func() {
+		next, cmd := m.Update(spinnerTickMsg(time.Now()))
+
+		Expect(next.(watchModel).spinnerFrame).To(Equal(1))
+		Expect(cmd).NotTo(BeNil())
+		Expect(cmd()).To(BeAssignableToTypeOf(spinnerTickMsg{}))
+	})
+
+	It("renders a different spinner frame each time spinnerFrame advances", func() {
+		m.results = []install.Result{{Check: passingCheck, Status: install.Progressing, Message: "installing"}}
+
+		first := m.View().Content
+		m.spinnerFrame = 1
+		second := m.View().Content
+
+		Expect(first).NotTo(Equal(second))
+	})
 })
+
+// findCheckResultsMsg runs cmd (as returned by Init/Update) and, if it's a
+// tea.BatchMsg (Init batches the data-refresh command with the spinner
+// ticker), runs each sub-command until it finds the checkResultsMsg --
+// mirroring what the real bubbletea runtime does when dispatching a batch,
+// without needing a full Program to drive the test.
+func findCheckResultsMsg(cmd tea.Cmd) checkResultsMsg {
+	return findMsg[checkResultsMsg](cmd)
+}
+
+// findMsg is findCheckResultsMsg's generic core, reused for other message
+// types produced alongside it in the same batch (e.g. spinnerTickMsg).
+func findMsg[T any](cmd tea.Cmd) T {
+	msg := cmd()
+	if batch, ok := msg.(tea.BatchMsg); ok {
+		for _, sub := range batch {
+			if sub == nil {
+				continue
+			}
+			if found, ok := sub().(T); ok {
+				return found
+			}
+		}
+		ExpectWithOffset(1, false).To(BeTrue(), "no message of the expected type found in batch")
+	}
+	found, ok := msg.(T)
+	ExpectWithOffset(1, ok).To(BeTrue(), "message was not of the expected type")
+	return found
+}

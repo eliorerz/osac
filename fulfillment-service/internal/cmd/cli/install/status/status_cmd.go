@@ -154,7 +154,7 @@ func (r *runnerContext) run(cmd *cobra.Command, _ []string) error {
 			console.Errorf(ctx, "Failed to list OSAC's workloads: %v\n", err)
 			return exit.Error(1)
 		}
-		console.Infof(ctx, "%s", renderStatus(results, render.Width(console.Stdout())))
+		console.Infof(ctx, "%s", renderStatus(results, render.Width(console.Stdout()), 0))
 		return nil
 	}
 

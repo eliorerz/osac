@@ -27,22 +27,13 @@ import (
 // Colors match render.Table's STATUS column, for a consistent look across
 // `osac install discover/validate/status`.
 const (
-	colorGreen  = "10" // Pass; also the progress bar once everything is ready
-	colorRed    = "9"  // Fail, Required; also the progress bar early on
-	colorYellow = "11" // Fail, Warning; also the progress bar approaching ready
-	colorCyan   = "14" // Progressing -- distinct from red/yellow/green so "installing" never reads as a failure
+	colorGreen  = "10" // Pass; also the progress bar while nothing has genuinely failed
+	colorRed    = "9"  // Fail, Required; also the progress bar once something has
+	colorYellow = "11" // Fail, Warning
+	colorBlue   = "12" // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
 	colorBanner = "99" // Purple
 	colorBorder = "99"
 	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
-)
-
-// progressColorThresholds: below barColorLowThreshold the bar is red, below
-// barColorHighThreshold it's yellow, at or above it it's green -- the same
-// red/yellow/green a viewer already reads from the per-check icons, applied
-// to the overall ready-percentage.
-const (
-	barColorLowThreshold  = 0.5
-	barColorHighThreshold = 1.0
 )
 
 const (
@@ -65,14 +56,18 @@ const (
 // renders the same string -- so it's testable without a real terminal or
 // tea.Program, and reusable by both the one-shot render path and the
 // watch-mode tea.Model's View.
-func renderStatus(results []install.Result, width int) string {
+// spinnerFrame is which frame of the Progressing spinner (see
+// spinnerFrames) to draw. The one-shot render path has no animation loop
+// driving it, so it always passes 0 -- a single static frame, which is
+// expected and fine for a single render.
+func renderStatus(results []install.Result, width int, spinnerFrame int) string {
 	frameWidth, contentWidth := frameDimensions(width)
 
 	var b strings.Builder
 	b.WriteString(banner())
 	b.WriteString(progressLine(results, contentWidth))
 	b.WriteString("\n\n")
-	b.WriteString(sections(results, contentWidth))
+	b.WriteString(sections(results, contentWidth, spinnerFrame))
 
 	return frame(strings.TrimRight(b.String(), "\n"), frameWidth)
 }
@@ -150,27 +145,27 @@ var installationCategories = map[install.Category]bool{
 // sections that actually have entries. WorkloadChecks always includes the
 // namespace result, so this is empty only when called directly with
 // results that omit it entirely (e.g. a test).
-func sections(results []install.Result, width int) string {
+func sections(results []install.Result, width int, spinnerFrame int) string {
 	if len(results) == 0 {
 		return "No OSAC workloads found in this namespace.\n"
 	}
 	var b strings.Builder
-	writeSection(&b, "NAMESPACE", filterCategory(results, install.NamespaceCategory), width)
-	writeSection(&b, "SERVICES", filterCategory(results, install.ServiceCategory), width)
-	writeSection(&b, "JOBS", filterCategory(results, install.JobCategory), width)
-	writeSection(&b, "RESOURCES", filterCategory(results, install.ResourceCategory), width)
-	writeSection(&b, "OPERATORS", filterCategory(results, install.OperatorCategory), width)
+	writeSection(&b, "NAMESPACE", filterCategory(results, install.NamespaceCategory), width, spinnerFrame)
+	writeSection(&b, "SERVICES", filterCategory(results, install.ServiceCategory), width, spinnerFrame)
+	writeSection(&b, "JOBS", filterCategory(results, install.JobCategory), width, spinnerFrame)
+	writeSection(&b, "RESOURCES", filterCategory(results, install.ResourceCategory), width, spinnerFrame)
+	writeSection(&b, "OPERATORS", filterCategory(results, install.OperatorCategory), width, spinnerFrame)
 	return b.String()
 }
 
-func writeSection(b *strings.Builder, title string, results []install.Result, width int) {
+func writeSection(b *strings.Builder, title string, results []install.Result, width int, spinnerFrame int) {
 	if len(results) == 0 {
 		return
 	}
 	b.WriteString(sectionHeader(title))
 	b.WriteString("\n")
 	for _, result := range results {
-		b.WriteString(statusLine(result, width))
+		b.WriteString(statusLine(result, width, spinnerFrame))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
@@ -198,22 +193,28 @@ func progressLine(results []install.Result, width int) string {
 	if barWidth < minBarWidth {
 		barWidth = minBarWidth
 	}
-	bar := progress.New(
-		progress.WithColorFunc(func(total, _ float64) stdcolor.Color { return progressColor(total) }),
-		progress.WithWidth(barWidth),
-	)
 
 	passed := 0
 	total := 0
+	failed := false
 	for _, result := range results {
 		if !installationCategories[result.Check.Category] {
 			continue
 		}
 		total++
-		if result.Status == install.Pass {
+		switch result.Status {
+		case install.Pass:
 			passed++
+		case install.Failed:
+			failed = true
 		}
 	}
+	barColor := progressColor(failed)
+	bar := progress.New(
+		progress.WithColorFunc(func(_, _ float64) stdcolor.Color { return barColor }),
+		progress.WithWidth(barWidth),
+	)
+
 	var percent float64
 	if total > 0 {
 		percent = float64(passed) / float64(total)
@@ -225,15 +226,18 @@ func progressLine(results []install.Result, width int) string {
 // progressColor picks red/yellow/green for the progress bar based on the
 // overall ready-percentage, the same three colors a viewer already reads
 // from the per-check ✓/✗ icons.
-func progressColor(percent float64) stdcolor.Color {
-	switch {
-	case percent >= barColorHighThreshold:
-		return lipgloss.Color(colorGreen)
-	case percent >= barColorLowThreshold:
-		return lipgloss.Color(colorYellow)
-	default:
+// progressColor is red when any counted result has genuinely Failed, green
+// otherwise -- including at 10% ready, as long as everything not yet ready
+// is still Progressing rather than actually broken. A percent-based
+// red/yellow/green gradient would read early, entirely-normal install
+// progress (nothing has failed, most things simply haven't started yet) as
+// a problem; this reserves red for something that actually needs
+// attention.
+func progressColor(failed bool) stdcolor.Color {
+	if failed {
 		return lipgloss.Color(colorRed)
 	}
+	return lipgloss.Color(colorGreen)
 }
 
 // statusLine renders one check as "<icon> <name, padded/truncated> <message,
@@ -243,8 +247,8 @@ func progressColor(percent float64) stdcolor.Color {
 // codes as visible characters) -- both would silently break the single-line
 // layout otherwise: a long check name would wrap onto a second line, and an
 // overly long message would render with no indication it was cut off.
-func statusLine(result install.Result, width int) string {
-	icon, style := statusIcon(result)
+func statusLine(result install.Result, width int, spinnerFrame int) string {
+	icon, style := statusIcon(result, spinnerFrame)
 	name := lipgloss.NewStyle().Bold(true).Render(padName(result.Check.Name, nameColWidth))
 
 	messageWidth := width - nameColWidth - layoutOverhead
@@ -285,13 +289,20 @@ func truncateEllipsis(s string, width int) string {
 // while it's Progressing (actively installing -- not a failure, so it must
 // never render as red/yellow the way an actual failure does), and ✗
 // red/yellow (by Severity) once it's genuinely Failed.
-func statusIcon(result install.Result) (string, lipgloss.Style) {
+// spinnerFrames is a small Braille-pattern spinner (all single-width in
+// virtually every terminal, unlike many other "animation" glyphs), cycled
+// through by spinnerFrame to show a Progressing check as actively moving
+// rather than merely a static, ambiguous symbol.
+var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+
+func statusIcon(result install.Result, spinnerFrame int) (string, lipgloss.Style) {
 	bold := lipgloss.NewStyle().Bold(true)
 	switch result.Status {
 	case install.Pass:
 		return "✓", bold.Foreground(lipgloss.Color(colorGreen))
 	case install.Progressing:
-		return "~", bold.Foreground(lipgloss.Color(colorCyan))
+		frame := spinnerFrames[spinnerFrame%len(spinnerFrames)]
+		return frame, bold.Foreground(lipgloss.Color(colorBlue))
 	default:
 		if result.Check.Severity == install.Warning {
 			return "✗", bold.Foreground(lipgloss.Color(colorYellow))

@@ -17,6 +17,7 @@ import (
 	"context"
 	"time"
 
+	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 
 	"github.com/osac-project/osac/osac-installer/pkg/install"
@@ -35,6 +36,18 @@ type checkResultsMsg struct {
 // tickMsg triggers the next workload listing in watch mode.
 type tickMsg time.Time
 
+// spinnerTickMsg advances the Progressing spinner's animation by one frame.
+// Ticks on its own fast, fixed cadence (spinnerTickInterval) independent of
+// --interval, which is usually far too slow (default 5s) to animate
+// against directly -- re-checking cluster state and animating "this is
+// still moving" are different concerns on different clocks.
+type spinnerTickMsg time.Time
+
+// spinnerTickInterval is fast enough to read as continuous motion but far
+// below anything a re-render at this rate would noticeably burden a
+// terminal with.
+const spinnerTickInterval = 120 * time.Millisecond
+
 // watchModel is the tea.Model driving `osac install status --watch`: it
 // re-checks namespace's workloads and the prerequisite matrix (checks) on
 // an interval and redraws in place, fitted to the terminal's current size
@@ -49,9 +62,20 @@ type watchModel struct {
 	checks   []install.Check
 	interval time.Duration
 
-	results []install.Result
-	err     error
-	width   int
+	results      []install.Result
+	err          error
+	width        int
+	spinnerFrame int
+
+	// vp scrolls the dashboard when it's taller than the terminal -- without
+	// it, a small terminal (or an install with many components) just
+	// truncates the bottom of the frame with no way to see the rest.
+	// haveSize is false until the first real tea.WindowSizeMsg arrives (the
+	// zero-value viewport has no real height yet), so a one-shot render or
+	// a test that never sends one still renders the full, unclipped body
+	// exactly as before.
+	vp       viewport.Model
+	haveSize bool
 }
 
 func newWatchModel(ctx context.Context, clients *install.Clients, namespace string, checks []install.Check, interval time.Duration) watchModel {
@@ -65,7 +89,11 @@ func newWatchModel(ctx context.Context, clients *install.Clients, namespace stri
 }
 
 func (m watchModel) Init() tea.Cmd {
-	return gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks)
+	return tea.Batch(gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks), spinnerTick())
+}
+
+func spinnerTick() tea.Cmd {
+	return tea.Tick(spinnerTickInterval, func(t time.Time) tea.Msg { return spinnerTickMsg(t) })
 }
 
 // gatherResultsCmd combines the namespace/workload results (WorkloadChecks)
@@ -97,33 +125,67 @@ func tick(interval time.Duration) tea.Cmd {
 	return tea.Tick(interval, func(t time.Time) tea.Msg { return tickMsg(t) })
 }
 
+// body is the framed dashboard (or error box) content, before any
+// viewport scrolling/clipping is applied to it.
+func (m watchModel) body() string {
+	if m.err != nil {
+		return renderError(m.err, m.width)
+	}
+	return renderStatus(m.results, m.width, m.spinnerFrame)
+}
+
 func (m watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmd tea.Cmd
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
-		return m, nil
+		m.haveSize = true
+		m.vp.SetWidth(msg.Width)
+		// -1 for the "(press q to quit)" footer line View() appends below
+		// the scrollable area.
+		m.vp.SetHeight(max(msg.Height-1, 1))
 	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
 		}
-		return m, nil
+		if m.haveSize {
+			m.vp, cmd = m.vp.Update(msg)
+		}
 	case checkResultsMsg:
 		m.results = msg.results
 		m.err = msg.err
-		return m, tick(m.interval)
+		cmd = tick(m.interval)
 	case tickMsg:
-		return m, gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks)
+		cmd = gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks)
+	case spinnerTickMsg:
+		m.spinnerFrame++
+		cmd = spinnerTick()
+	default:
+		return m, nil
 	}
-	return m, nil
+	// Keep the viewport's content in sync with the model on every update,
+	// not just when rendering: SetContent is what lets it compute how far
+	// there is left to scroll (maxYOffset), and View() has a value
+	// receiver -- calling SetContent only there would mutate a throwaway
+	// copy, leaving the real model's viewport thinking it has no content
+	// and clamping every scroll key to a no-op.
+	if m.haveSize {
+		m.vp.SetContent(m.body())
+	}
+	return m, cmd
 }
 
 func (m watchModel) View() tea.View {
-	body := renderStatus(m.results, m.width)
-	if m.err != nil {
-		body = renderError(m.err, m.width)
+	content := m.body()
+	footer := "\n(press q to quit)"
+	if m.haveSize {
+		content = m.vp.View()
+		if m.vp.TotalLineCount() > m.vp.VisibleLineCount() {
+			footer = "\n(press q to quit, ↑/↓ to scroll)"
+		}
 	}
-	v := tea.NewView(body + "\n(press q to quit)")
+	v := tea.NewView(content + footer)
 	v.AltScreen = true
 	return v
 }

@@ -39,7 +39,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: requiredCheck, Status: install.Failed, Message: "failed"},
 		}
 
-		got := renderStatus(results, 80)
+		got := renderStatus(results, 80, 0)
 
 		Expect(got).To(ContainSubstring("1/2 ready"))
 	})
@@ -50,7 +50,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: warningCheck, Status: install.Failed, Message: "in progress"},
 		}
 
-		got := renderStatus(results, 80)
+		got := renderStatus(results, 80, 0)
 
 		Expect(got).To(ContainSubstring("fulfillment-grpc-server"))
 		Expect(got).To(ContainSubstring("1/1 replicas ready"))
@@ -59,15 +59,15 @@ var _ = Describe("renderStatus", func() {
 	})
 
 	It("handles zero results without panicking", func() {
-		got := renderStatus(nil, 80)
+		got := renderStatus(nil, 80, 0)
 
 		Expect(got).To(ContainSubstring("0/0 ready"))
 		Expect(got).To(ContainSubstring("No OSAC workloads found"))
 	})
 
 	It("falls back to a default width when given 0 or a negative width", func() {
-		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 0) }).NotTo(Panic())
-		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, -5) }).NotTo(Panic())
+		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 0, 0) }).NotTo(Panic())
+		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, -5, 0) }).NotTo(Panic())
 	})
 
 	It("excludes prerequisite results (Resources/Operators) from the progress bar's ready count", func() {
@@ -78,7 +78,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: operatorCheck, Status: install.Failed}, // prerequisite -- doesn't count
 		}
 
-		got := renderStatus(results, 80)
+		got := renderStatus(results, 80, 0)
 
 		Expect(got).To(ContainSubstring("2/2 ready"))
 	})
@@ -89,7 +89,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: namespaceCheck, Status: install.Pass, Message: "exists"},
 		}
 
-		got := renderStatus(results, 80)
+		got := renderStatus(results, 80, 0)
 
 		Expect(got).NotTo(ContainSubstring("100%"))
 		Expect(got).To(ContainSubstring("0/0 ready"))
@@ -110,7 +110,7 @@ var _ = Describe("statusLine", func() {
 		longName := install.Check{Name: "metal3-provisioning-watch-all-namespaces", Severity: install.Required}
 		result := install.Result{Check: longName, Status: install.Failed, Message: "short"}
 
-		got := statusLine(result, 80)
+		got := statusLine(result, 80, 0)
 
 		Expect(got).NotTo(ContainSubstring("\n"))
 		Expect(got).To(ContainSubstring("…"))
@@ -121,7 +121,7 @@ var _ = Describe("statusLine", func() {
 		longMessage := "this message is deliberately much longer than any reasonable terminal-width budget for the message column and must be shortened"
 		result := install.Result{Check: passingCheck, Status: install.Pass, Message: longMessage}
 
-		got := statusLine(result, 80)
+		got := statusLine(result, 80, 0)
 
 		Expect(got).NotTo(ContainSubstring("\n"))
 		Expect(got).To(HaveSuffix("…"))
@@ -130,7 +130,7 @@ var _ = Describe("statusLine", func() {
 	It("does not truncate a message that fits", func() {
 		result := install.Result{Check: passingCheck, Status: install.Pass, Message: "short message"}
 
-		got := statusLine(result, 80)
+		got := statusLine(result, 80, 0)
 
 		Expect(got).To(ContainSubstring("short message"))
 		Expect(got).NotTo(ContainSubstring("…"))
@@ -150,18 +150,12 @@ var _ = Describe("padName", func() {
 })
 
 var _ = Describe("progressColor", func() {
-	It("is red below the low threshold", func() {
-		Expect(progressColor(0)).To(Equal(lipgloss.Color(colorRed)))
-		Expect(progressColor(0.49)).To(Equal(lipgloss.Color(colorRed)))
+	It("is green when nothing has genuinely failed, no matter how little is ready yet", func() {
+		Expect(progressColor(false)).To(Equal(lipgloss.Color(colorGreen)))
 	})
 
-	It("is yellow from the low threshold up to (not including) fully ready", func() {
-		Expect(progressColor(0.5)).To(Equal(lipgloss.Color(colorYellow)))
-		Expect(progressColor(0.99)).To(Equal(lipgloss.Color(colorYellow)))
-	})
-
-	It("is green once fully ready", func() {
-		Expect(progressColor(1.0)).To(Equal(lipgloss.Color(colorGreen)))
+	It("is red once something has genuinely failed", func() {
+		Expect(progressColor(true)).To(Equal(lipgloss.Color(colorRed)))
 	})
 })
 
@@ -172,7 +166,7 @@ var _ = Describe("sections", func() {
 			{Check: requiredCheck, Status: install.Failed},
 		}
 
-		got := sections(results, 76)
+		got := sections(results, 76, 0)
 
 		Expect(got).To(ContainSubstring("SERVICES"))
 		Expect(got).To(ContainSubstring("JOBS"))
@@ -182,7 +176,7 @@ var _ = Describe("sections", func() {
 	It("omits a section header when no result belongs to that category", func() {
 		results := []install.Result{{Check: passingCheck, Status: install.Pass}}
 
-		got := sections(results, 76)
+		got := sections(results, 76, 0)
 
 		Expect(got).To(ContainSubstring("SERVICES"))
 		Expect(got).NotTo(ContainSubstring("JOBS"))
@@ -195,7 +189,7 @@ var _ = Describe("sections", func() {
 			{Check: operatorCheck, Status: install.Failed},
 		}
 
-		got := sections(results, 76)
+		got := sections(results, 76, 0)
 
 		Expect(got).To(ContainSubstring("RESOURCES"))
 		Expect(got).To(ContainSubstring("OPERATORS"))
@@ -230,24 +224,41 @@ var _ = Describe("banner", func() {
 
 var _ = Describe("statusIcon", func() {
 	It("shows a check mark for a passing check regardless of severity", func() {
-		icon, _ := statusIcon(install.Result{Check: requiredCheck, Status: install.Pass})
+		icon, _ := statusIcon(install.Result{Check: requiredCheck, Status: install.Pass}, 0)
 		Expect(icon).To(Equal("✓"))
 	})
 
 	It("shows an X for a failed Required check", func() {
-		icon, _ := statusIcon(install.Result{Check: requiredCheck, Status: install.Failed})
+		icon, _ := statusIcon(install.Result{Check: requiredCheck, Status: install.Failed}, 0)
 		Expect(icon).To(Equal("✗"))
 	})
 
 	It("shows an X for a failed Warning check too, just styled differently", func() {
-		icon, _ := statusIcon(install.Result{Check: warningCheck, Status: install.Failed})
+		icon, _ := statusIcon(install.Result{Check: warningCheck, Status: install.Failed}, 0)
 		Expect(icon).To(Equal("✗"))
 	})
 
 	It("shows a distinct icon and color for Progressing, never the Failed X", func() {
-		icon, style := statusIcon(install.Result{Check: requiredCheck, Status: install.Progressing})
+		icon, style := statusIcon(install.Result{Check: requiredCheck, Status: install.Progressing}, 0)
 		Expect(icon).NotTo(Equal("✗"))
 		Expect(icon).NotTo(Equal("✓"))
-		Expect(style.GetForeground()).To(Equal(lipgloss.Color(colorCyan)))
+		Expect(style.GetForeground()).To(Equal(lipgloss.Color(colorBlue)))
+	})
+
+	It("animates the Progressing spinner across frames as spinnerFrame advances", func() {
+		result := install.Result{Check: requiredCheck, Status: install.Progressing}
+
+		first, _ := statusIcon(result, 0)
+		second, _ := statusIcon(result, 1)
+
+		Expect(first).NotTo(Equal(second))
+		Expect(spinnerFrames).To(ContainElement(first))
+		Expect(spinnerFrames).To(ContainElement(second))
+	})
+
+	It("wraps the spinner frame index instead of panicking on an out-of-range value", func() {
+		Expect(func() {
+			statusIcon(install.Result{Check: requiredCheck, Status: install.Progressing}, len(spinnerFrames)+3)
+		}).NotTo(Panic())
 	})
 })
