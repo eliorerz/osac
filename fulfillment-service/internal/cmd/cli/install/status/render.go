@@ -31,10 +31,24 @@ const (
 	colorRed    = "9"  // Fail, Required; also the progress bar once something has
 	colorYellow = "11" // Fail, Warning
 	colorBlue   = "12" // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
+	colorGray   = "8"  // Progressing/"not created yet" -- queued, nothing actually happening yet
 	colorBanner = "99" // Purple
 	colorBorder = "99"
 	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
 )
+
+// notYetCreatedMessage is the exact Message install.WorkloadChecks sets on
+// a Progressing result for something the Helm release declares but hasn't
+// created yet (see notYetCreatedResult and namespaceResult in
+// osac-installer/pkg/install/workload.go). Matched on here to tell that
+// apart from a Progressing result something is actively doing (a Job
+// retrying, a Deployment rolling out, a CSV installing) -- both share the
+// same install.Progressing status, but only the latter warrants an
+// animated spinner; something merely queued behind an earlier step hasn't
+// started yet, and animating it implies work that isn't actually
+// happening (confirmed live: this read as confusing/misleading with every
+// not-yet-created Job showing the same spinner as one genuinely retrying).
+const notYetCreatedMessage = "not created yet"
 
 const (
 	defaultWidth    = 80
@@ -104,7 +118,7 @@ func phaseTitle(results []install.Result) string {
 		if !installationCategories[result.Check.Category] || result.Check.Name == preInstallValidateJobName {
 			continue
 		}
-		if result.Message != "not created yet" {
+		if result.Message != notYetCreatedMessage {
 			title = "Installing OSAC..."
 			break
 		}
@@ -342,6 +356,12 @@ func statusIcon(result install.Result, spinnerFrame int) (string, lipgloss.Style
 	case install.Pass:
 		return "✓", bold.Foreground(lipgloss.Color(colorGreen))
 	case install.Progressing:
+		if result.Message == notYetCreatedMessage {
+			// Queued behind an earlier step, nothing actually happening
+			// yet -- a static, dim icon, not the animated spinner (which
+			// would otherwise misleadingly imply active work).
+			return "○", lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color(colorGray))
+		}
 		frame := spinnerFrames[spinnerFrame%len(spinnerFrames)]
 		return frame, bold.Foreground(lipgloss.Color(colorBlue))
 	default:

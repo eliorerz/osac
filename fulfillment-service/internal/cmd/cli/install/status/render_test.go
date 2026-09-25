@@ -316,4 +316,23 @@ var _ = Describe("statusIcon", func() {
 			statusIcon(install.Result{Check: requiredCheck, Status: install.Progressing}, len(spinnerFrames)+3)
 		}).NotTo(Panic())
 	})
+
+	It("shows a static, dim icon (not the animated spinner) for something not created yet", func() {
+		result := install.Result{Check: requiredCheck, Status: install.Progressing, Message: notYetCreatedMessage}
+
+		icon, style := statusIcon(result, 0)
+
+		Expect(spinnerFrames).NotTo(ContainElement(icon))
+		Expect(style.GetFaint()).To(BeTrue())
+		Expect(style.GetForeground()).To(Equal(lipgloss.Color(colorGray)))
+	})
+
+	It("doesn't animate the not-created-yet icon across spinner frames, unlike an actively-progressing one", func() {
+		result := install.Result{Check: requiredCheck, Status: install.Progressing, Message: notYetCreatedMessage}
+
+		first, _ := statusIcon(result, 0)
+		second, _ := statusIcon(result, 1)
+
+		Expect(first).To(Equal(second))
+	})
 })
