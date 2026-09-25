@@ -29,6 +29,7 @@ require (
 	github.com/muesli/cancelreader v0.2.2
 	github.com/open-policy-agent/opa v1.18.2
 	github.com/osac-project/osac/bare-metal-fulfillment-operator v0.0.0-00010101000000-000000000000
+	github.com/osac-project/osac/osac-installer/pkg/install v0.0.0-00010101000000-000000000000
 	github.com/osac-project/osac/osac-operator/api v0.0.7
 	github.com/osac-project/osac/proto v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.24.1
@@ -150,7 +151,7 @@ require (
 	github.com/yuin/goldmark-emoji v1.0.6 // indirect
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/oauth2 v0.36.0 // indirect
+	golang.org/x/oauth2 v0.37.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/tools v0.50.0 // indirect
 	gopkg.in/evanphx/json-patch.v4 v4.13.0 // indirect
@@ -185,6 +186,7 @@ require (
 
 replace (
 	github.com/osac-project/osac/bare-metal-fulfillment-operator => ../bare-metal-fulfillment-operator
+	github.com/osac-project/osac/osac-installer/pkg/install => ../osac-installer/pkg/install
 	github.com/osac-project/osac/osac-operator/api => ../osac-operator/api
 	github.com/osac-project/osac/proto => ../proto
 )
