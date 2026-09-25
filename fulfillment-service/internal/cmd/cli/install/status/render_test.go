@@ -288,9 +288,11 @@ var _ = Describe("statusIcon", func() {
 		Expect(icon).To(Equal("✗"))
 	})
 
-	It("shows an X for a failed Warning check too, just styled differently", func() {
-		icon, _ := statusIcon(install.Result{Check: warningCheck, Status: install.Failed}, 0)
-		Expect(icon).To(Equal("✗"))
+	It("shows a warning triangle, not the X, for a failed Warning check", func() {
+		icon, style := statusIcon(install.Result{Check: warningCheck, Status: install.Failed}, 0)
+		Expect(icon).To(Equal("⚠"))
+		Expect(icon).NotTo(Equal("✗"))
+		Expect(style.GetForeground()).To(Equal(lipgloss.Color(colorYellow)))
 	})
 
 	It("shows a distinct icon and color for Progressing, never the Failed X", func() {

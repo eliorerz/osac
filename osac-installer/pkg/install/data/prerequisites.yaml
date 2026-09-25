@@ -71,7 +71,13 @@
 
 - id: kafka-operator
   kind: csv-succeeded
-  severity: required
+  # Warning, not Required: only metering needs this, and which services a
+  # given install actually enables is the customer's choice, not a fixed
+  # OSAC-wide requirement the way cert-manager or the AAP Operator are
+  # (requiredFor: [all], above). Missing this only blocks metering, not the
+  # whole install, so it shouldn't fail `validate` the same way a genuinely
+  # universal prerequisite does.
+  severity: warning
   category: operator
   requiredFor: [metering]
   displayName: "Streams for Apache Kafka"
@@ -84,7 +90,10 @@
 
 - id: cnv-operator
   kind: csv-succeeded
-  severity: required
+  # Warning, not Required: same reasoning as kafka-operator above -- only
+  # vmaas needs this, so it's conditional on the customer's own service
+  # choice, not a universal OSAC requirement.
+  severity: warning
   category: operator
   requiredFor: [vmaas]
   displayName: "OpenShift Virtualization"
@@ -97,7 +106,10 @@
 
 - id: metallb-operator
   kind: csv-succeeded
-  severity: required
+  # Warning, not Required: same reasoning as kafka-operator above -- only
+  # vmaas/caas need this, so it's conditional on the customer's own service
+  # choice, not a universal OSAC requirement.
+  severity: warning
   category: operator
   requiredFor: [vmaas, caas]
   displayName: "MetalLB Operator"
@@ -107,7 +119,10 @@
 
 - id: mce-operator
   kind: csv-succeeded
-  severity: required
+  # Warning, not Required: same reasoning as kafka-operator above -- only
+  # caas needs this, so it's conditional on the customer's own service
+  # choice, not a universal OSAC requirement.
+  severity: warning
   category: operator
   requiredFor: [caas]
   displayName: "multicluster engine for Kubernetes Operator"

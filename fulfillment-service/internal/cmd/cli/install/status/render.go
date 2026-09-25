@@ -340,10 +340,16 @@ func truncateEllipsis(s string, width int) string {
 	return string(r[:width-1]) + "…"
 }
 
-// statusIcon picks a check's icon and color: ✓ green once it Pass-es, ~ cyan
-// while it's Progressing (actively installing -- not a failure, so it must
-// never render as red/yellow the way an actual failure does), and ✗
-// red/yellow (by Severity) once it's genuinely Failed.
+// statusIcon picks a check's icon and color: ✓ green once it Pass-es, a
+// spinner (or a static "○", see notYetCreatedMessage) while it's
+// Progressing -- not a failure, so it must never render as red/yellow the
+// way an actual failure does -- ✗ red once it's genuinely Failed at
+// Required severity, and ⚠ yellow once it's Failed at Warning severity: a
+// visibly different symbol, not just a different color, so a
+// Warning-severity gap (optional depending on which services this install
+// actually uses, e.g. cnv-operator only matters for vmaas) doesn't read at
+// a glance as the same kind of problem as a genuinely blocking Required
+// failure.
 // spinnerFrames is a small Braille-pattern spinner (all single-width in
 // virtually every terminal, unlike many other "animation" glyphs), cycled
 // through by spinnerFrame to show a Progressing check as actively moving
@@ -366,7 +372,7 @@ func statusIcon(result install.Result, spinnerFrame int) (string, lipgloss.Style
 		return frame, bold.Foreground(lipgloss.Color(colorBlue))
 	default:
 		if result.Check.Severity == install.Warning {
-			return "✗", bold.Foreground(lipgloss.Color(colorYellow))
+			return "⚠", bold.Foreground(lipgloss.Color(colorYellow))
 		}
 		return "✗", bold.Foreground(lipgloss.Color(colorRed))
 	}
