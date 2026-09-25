@@ -19,6 +19,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
@@ -163,10 +164,19 @@ func daemonSetResult(ds appsv1.DaemonSet) Result {
 }
 
 // jobResult distinguishes a Job still running (expected during a fresh
-// install -- the AAP bootstrap job alone can take 10-40 minutes) from one
-// that has actually failed, so a still-in-progress configuration step
-// renders as "installing" rather than the same red/alarming failure state
-// as a Job that genuinely errored out.
+// install -- the AAP bootstrap job alone can take 10-40 minutes, and
+// normally retries a few times while it waits on something else to become
+// ready) from one that has actually given up, so a still-in-progress
+// configuration step renders as "installing" rather than the same
+// red/alarming failure state as a Job that's truly done retrying.
+//
+// status.failed alone can't tell these apart: Kubernetes increments it on
+// every retried pod attempt, even ones well within backoffLimit that the
+// Job will go on to recover from. The Job's own "Failed" condition is only
+// True once Kubernetes itself has given up (backoffLimit or
+// activeDeadlineSeconds exceeded) -- that's the Job's own built-in timeout,
+// so nothing extra is needed here to distinguish "still retrying" from
+// "actually failed".
 func jobResult(j batchv1.Job) Result {
 	switch {
 	case j.Status.Succeeded > 0:
@@ -175,11 +185,17 @@ func jobResult(j batchv1.Job) Result {
 			Status:  Pass,
 			Message: "completed",
 		}
-	case j.Status.Failed > 0:
+	case jobConditionTrue(j, batchv1.JobFailed):
 		return Result{
 			Check:   Check{Name: j.Name, Description: "Job", Severity: Required, Category: JobCategory},
 			Status:  Failed,
 			Message: "failed",
+		}
+	case j.Status.Failed > 0:
+		return Result{
+			Check:   Check{Name: j.Name, Description: "Job", Severity: Warning, Category: JobCategory},
+			Status:  Progressing,
+			Message: fmt.Sprintf("in progress (retrying, %d failed attempt(s) so far)", j.Status.Failed),
 		}
 	default:
 		return Result{
@@ -188,4 +204,13 @@ func jobResult(j batchv1.Job) Result {
 			Message: "in progress",
 		}
 	}
+}
+
+func jobConditionTrue(j batchv1.Job, condType batchv1.JobConditionType) bool {
+	for _, c := range j.Status.Conditions {
+		if c.Type == condType && c.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }

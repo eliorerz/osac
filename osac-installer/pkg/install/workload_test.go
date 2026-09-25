@@ -143,12 +143,17 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(job.Message).To(Equal("completed"))
 	})
 
-	It("marks a failed Job as Failed/Required", func() {
+	It("marks a Job as Failed/Required only once Kubernetes itself gives up (the Failed condition), not on every retried attempt", func() {
 		clients := newFakeClients([]runtime.Object{
 			namespaceObj("osac"),
 			&batchv1.Job{
 				ObjectMeta: metav1.ObjectMeta{Name: "osac-aap-bootstrap", Namespace: "osac"},
-				Status:     batchv1.JobStatus{Failed: 1},
+				Status: batchv1.JobStatus{
+					Failed: 3,
+					Conditions: []batchv1.JobCondition{
+						{Type: batchv1.JobFailed, Status: corev1.ConditionTrue},
+					},
+				},
 			},
 		}, nil)
 
@@ -177,6 +182,25 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(job.Check.Severity).To(Equal(Warning))
 		Expect(job.Status).To(Equal(Progressing))
 		Expect(job.Message).To(Equal("in progress"))
+	})
+
+	It("marks a Job that's retrying (failed attempts but no Failed condition yet) as Progressing, and reports the retry count", func() {
+		clients := newFakeClients([]runtime.Object{
+			namespaceObj("osac"),
+			&batchv1.Job{
+				ObjectMeta: metav1.ObjectMeta{Name: "osac-aap-bootstrap", Namespace: "osac"},
+				Status:     batchv1.JobStatus{Failed: 2},
+			},
+		}, nil)
+
+		results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+		Expect(err).NotTo(HaveOccurred())
+		job := byName(results)["osac-aap-bootstrap"]
+		Expect(job.Check.Severity).To(Equal(Warning))
+		Expect(job.Status).To(Equal(Progressing))
+		Expect(job.Message).To(ContainSubstring("retrying"))
+		Expect(job.Message).To(ContainSubstring("2 failed attempt"))
 	})
 
 	It("only lists workloads in the given namespace", func() {
