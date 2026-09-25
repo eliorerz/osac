@@ -29,8 +29,9 @@ import (
 // workload's own Result, which always carries a Status/Message and never
 // an error.
 type checkResultsMsg struct {
-	results []install.Result
-	err     error
+	results      []install.Result
+	chartVersion string
+	err          error
 }
 
 // tickMsg triggers the next workload listing in watch mode.
@@ -63,6 +64,7 @@ type watchModel struct {
 	interval time.Duration
 
 	results      []install.Result
+	chartVersion string
 	err          error
 	width        int
 	spinnerFrame int
@@ -96,29 +98,34 @@ func spinnerTick() tea.Cmd {
 	return tea.Tick(spinnerTickInterval, func(t time.Time) tea.Msg { return spinnerTickMsg(t) })
 }
 
-// gatherResultsCmd combines the namespace/workload results (WorkloadChecks)
-// with the prerequisite results (RunAll over checks) into a single
-// checkResultsMsg, so the view always renders both from one consistent
-// snapshot rather than two independently-timed updates.
+// gatherResultsCmd combines the namespace/workload results (WorkloadChecks),
+// the prerequisite results (RunAll over checks), and the Helm release's
+// chart version into a single checkResultsMsg, so the view always renders
+// all of it from one consistent snapshot rather than independently-timed
+// updates.
 func gatherResultsCmd(ctx context.Context, clients *install.Clients, namespace string, checks []install.Check) tea.Cmd {
 	return func() tea.Msg {
-		results, err := gatherResults(ctx, clients, namespace, checks)
+		results, chartVersion, err := gatherResults(ctx, clients, namespace, checks)
 		if err != nil {
 			return checkResultsMsg{err: err}
 		}
-		return checkResultsMsg{results: results}
+		return checkResultsMsg{results: results, chartVersion: chartVersion}
 	}
 }
 
 // gatherResults is gatherResultsCmd's non-tea.Cmd core, shared with the
 // one-shot render path (without --watch) in status_cmd.go.
-func gatherResults(ctx context.Context, clients *install.Clients, namespace string, checks []install.Check) ([]install.Result, error) {
+func gatherResults(ctx context.Context, clients *install.Clients, namespace string, checks []install.Check) ([]install.Result, string, error) {
 	results, err := install.WorkloadChecks(ctx, clients, namespace)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	results = append(results, install.RunAll(ctx, clients, checks)...)
-	return results, nil
+	chartVersion, err := install.ChartVersion(ctx, clients, namespace)
+	if err != nil {
+		return nil, "", err
+	}
+	return results, chartVersion, nil
 }
 
 func tick(interval time.Duration) tea.Cmd {
@@ -131,7 +138,7 @@ func (m watchModel) body() string {
 	if m.err != nil {
 		return renderError(m.err, m.width)
 	}
-	return renderStatus(m.results, m.width, m.spinnerFrame)
+	return renderStatus(m.results, m.width, m.spinnerFrame, m.chartVersion)
 }
 
 func (m watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -154,6 +161,7 @@ func (m watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case checkResultsMsg:
 		m.results = msg.results
+		m.chartVersion = msg.chartVersion
 		m.err = msg.err
 		cmd = tick(m.interval)
 	case tickMsg:

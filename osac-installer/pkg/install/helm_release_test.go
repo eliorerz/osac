@@ -64,6 +64,25 @@ func newHelmReleaseSecret(namespace, name string, version int, manifest string, 
 	}
 }
 
+// newHelmReleaseSecretWithChartVersion is newHelmReleaseSecret's sibling for
+// ChartVersion tests: same naming/labeling, but sets the release's embedded
+// Chart.Metadata.Version instead of a manifest/hooks.
+func newHelmReleaseSecretWithChartVersion(namespace, name string, version int, chartVersion string) *corev1.Secret {
+	return &corev1.Secret{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("sh.helm.release.v1.%s.v%d", name, version),
+			Namespace: namespace,
+			Labels:    map[string]string{"owner": "helm", "name": name},
+		},
+		Data: map[string][]byte{
+			"release": encodeHelmRelease(helmRelease{
+				Version: version,
+				Chart:   &helmChart{Metadata: &helmChartMetadata{Version: chartVersion}},
+			}),
+		},
+	}
+}
+
 var _ = Describe("decodeHelmRelease", func() {
 	It("round-trips a release through Helm's own base64(gzip(json())) encoding", func() {
 		encoded := encodeHelmRelease(helmRelease{Manifest: "kind: Deployment", Version: 3})
@@ -119,6 +138,40 @@ var _ = Describe("latestHelmRelease", func() {
 
 		Expect(err).NotTo(HaveOccurred())
 		Expect(release).To(BeNil())
+	})
+})
+
+var _ = Describe("ChartVersion", func() {
+	It("returns empty, not an error, when no release has been recorded yet", func() {
+		clients := newFakeClients(nil, nil)
+
+		version, err := ChartVersion(context.Background(), clients, "osac")
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(version).To(BeEmpty())
+	})
+
+	It("returns the chart's own version from the recorded release", func() {
+		clients := newFakeClients([]runtime.Object{
+			newHelmReleaseSecretWithChartVersion("osac", "osac", 1, "0.1.0"),
+		}, nil)
+
+		version, err := ChartVersion(context.Background(), clients, "osac")
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(version).To(Equal("0.1.0"))
+	})
+
+	It("returns the chart version from the highest-revision release when there are several", func() {
+		clients := newFakeClients([]runtime.Object{
+			newHelmReleaseSecretWithChartVersion("osac", "osac", 1, "0.1.0"),
+			newHelmReleaseSecretWithChartVersion("osac", "osac", 2, "0.2.0"),
+		}, nil)
+
+		version, err := ChartVersion(context.Background(), clients, "osac")
+
+		Expect(err).NotTo(HaveOccurred())
+		Expect(version).To(Equal("0.2.0"))
 	})
 })
 

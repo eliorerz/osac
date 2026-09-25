@@ -49,10 +49,41 @@ type helmRelease struct {
 	Manifest string     `json:"manifest"`
 	Hooks    []helmHook `json:"hooks"`
 	Version  int        `json:"version"`
+	Chart    *helmChart `json:"chart"`
 }
 
 type helmHook struct {
 	Manifest string `json:"manifest"`
+}
+
+// helmChart is the minimal subset of a release's embedded chart this
+// package needs: just enough to read the chart's own version (Chart.yaml's
+// "version" field, e.g. "0.1.0") -- not the app version, and not anything
+// about the chart's actual templates (those live in Manifest/Hooks, read
+// separately).
+type helmChart struct {
+	Metadata *helmChartMetadata `json:"metadata"`
+}
+
+type helmChartMetadata struct {
+	Version string `json:"version"`
+}
+
+// ChartVersion returns the currently recorded "osac" Helm release's chart
+// version (Chart.yaml's own "version" field, e.g. "0.1.0" -- not the app
+// version, and not the release's revision number, which is a different
+// "version" field on the release itself). Returns "" (not an error) when
+// no release has been recorded yet -- the same "nothing to report yet"
+// case latestHelmRelease itself treats as normal, not a failure.
+func ChartVersion(ctx context.Context, clients *Clients, namespace string) (string, error) {
+	release, err := latestHelmRelease(ctx, clients, namespace, helmReleaseName)
+	if err != nil {
+		return "", err
+	}
+	if release == nil || release.Chart == nil || release.Chart.Metadata == nil {
+		return "", nil
+	}
+	return release.Chart.Metadata.Version, nil
 }
 
 // latestHelmRelease reads and decodes the most recent (highest Version)

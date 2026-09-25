@@ -51,13 +51,25 @@ const (
 const notYetCreatedMessage = "not created yet"
 
 const (
-	defaultWidth    = 80
-	frameMinWidth   = 24
-	frameOverhead   = 4 // border (2 cols) + horizontal padding (2 cols)
-	maxBarWidth     = 100
-	minBarWidth     = 10
-	nameColWidth    = 36
-	barWidthTrim    = 4 // margin subtracted from the content width for the bar
+	defaultWidth  = 80
+	frameMinWidth = 24
+	frameOverhead = 4 // border (2 cols) + horizontal padding (2 cols)
+	maxBarWidth   = 100
+	minBarWidth   = 10
+	nameColWidth  = 36
+	// barWidthTrim reserves room for the "  N/N ready" text progressLine
+	// appends after the bar -- NOT extra padding, the space it needs.
+	// progress.Model.ViewAs draws its own "NNN%" label *inside* the width
+	// given to progress.WithWidth (confirmed by reading bubbles/progress's
+	// barView: it subtracts the percentage label's width from the track
+	// width itself), so the bar's rendered width is exactly barWidth; only
+	// the trailing "  N/N ready" is genuinely extra. Sized for up to
+	// 3-digit passed/total counts ("  999/999 ready" = 15 chars) plus a
+	// 1-char margin. Confirmed live: with the old value of 4, "N/N ready"
+	// wrapped onto its own line the moment maxBarWidth stopped being the
+	// binding constraint (i.e. as soon as the frame got wide enough not to
+	// hit the old 60-wide cap) -- this used to work only by accident.
+	barWidthTrim    = 16
 	layoutOverhead  = 3 // icon + the two spaces separating icon/name/message
 	minMessageWidth = 10
 )
@@ -74,12 +86,17 @@ const (
 // spinnerFrames) to draw. The one-shot render path has no animation loop
 // driving it, so it always passes 0 -- a single static frame, which is
 // expected and fine for a single render.
-func renderStatus(results []install.Result, width int, spinnerFrame int) string {
+//
+// chartVersion is the "osac" Helm release's chart version (see
+// install.ChartVersion), shown in the phase title. Empty when no release
+// has been recorded yet -- phaseTitle omits it rather than showing a blank
+// or placeholder version in that case.
+func renderStatus(results []install.Result, width int, spinnerFrame int, chartVersion string) string {
 	frameWidth, contentWidth := frameDimensions(width)
 
 	var b strings.Builder
 	b.WriteString(banner())
-	b.WriteString(phaseTitle(results))
+	b.WriteString(phaseTitle(results, chartVersion))
 	b.WriteString("\n")
 	b.WriteString(progressLine(results, contentWidth))
 	b.WriteString("\n\n")
@@ -112,16 +129,25 @@ const preInstallValidateJobName = "osac-pre-install-validate"
 // "nothing else has been created yet" is the reliable signal that
 // validation hasn't finished, regardless of whether its own Job is still
 // visible.
-func phaseTitle(results []install.Result) string {
-	title := "Validating prerequisites..."
+func phaseTitle(results []install.Result, chartVersion string) string {
+	installing := false
 	for _, result := range results {
 		if !installationCategories[result.Check.Category] || result.Check.Name == preInstallValidateJobName {
 			continue
 		}
 		if result.Message != notYetCreatedMessage {
-			title = "Installing OSAC..."
+			installing = true
 			break
 		}
+	}
+
+	version := "OSAC"
+	if chartVersion != "" {
+		version = "OSAC v" + chartVersion
+	}
+	title := "Validating prerequisites for " + version + "..."
+	if installing {
+		title = "Installing " + version + "..."
 	}
 	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorHeader)).Render(title)
 }

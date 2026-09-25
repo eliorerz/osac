@@ -15,6 +15,7 @@ package status
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -36,7 +37,7 @@ var _ = Describe("phaseTitle", func() {
 	It("reads 'Installing OSAC...' once any workload besides pre-install-validate has been created", func() {
 		results := []install.Result{{Check: passingCheck, Status: install.Pass, Message: "1/1 replicas ready"}}
 
-		Expect(phaseTitle(results)).To(ContainSubstring("Installing OSAC"))
+		Expect(phaseTitle(results, "")).To(ContainSubstring("Installing OSAC"))
 	})
 
 	It("reads 'Validating prerequisites...' while nothing besides pre-install-validate has been created yet", func() {
@@ -46,7 +47,7 @@ var _ = Describe("phaseTitle", func() {
 			{Check: warningCheck, Status: install.Progressing, Message: "not created yet"}, // some other Job, also not created yet
 		}
 
-		Expect(phaseTitle(results)).To(ContainSubstring("Validating prerequisites"))
+		Expect(phaseTitle(results, "")).To(ContainSubstring("Validating prerequisites"))
 	})
 
 	It("reads 'Installing OSAC...' even when pre-install-validate's own Job has disappeared (deleted on a retried upgrade)", func() {
@@ -56,7 +57,7 @@ var _ = Describe("phaseTitle", func() {
 		// signal has to come from elsewhere having actually been created.
 		results := []install.Result{{Check: passingCheck, Status: install.Progressing, Message: "0/1 replicas ready"}}
 
-		Expect(phaseTitle(results)).To(ContainSubstring("Installing OSAC"))
+		Expect(phaseTitle(results, "")).To(ContainSubstring("Installing OSAC"))
 	})
 
 	It("ignores prerequisite results (Resources/Operators) when deciding the phase", func() {
@@ -65,7 +66,22 @@ var _ = Describe("phaseTitle", func() {
 			{Check: operatorCheck, Status: install.Pass, Message: "installed"},
 		}
 
-		Expect(phaseTitle(results)).To(ContainSubstring("Validating prerequisites"))
+		Expect(phaseTitle(results, "")).To(ContainSubstring("Validating prerequisites"))
+	})
+
+	It("includes the chart version in both phases, when known", func() {
+		validateCheck := install.Check{Name: preInstallValidateJobName, Category: install.JobCategory}
+		validating := []install.Result{{Check: validateCheck, Status: install.Progressing, Message: "not created yet"}}
+		installing := []install.Result{{Check: passingCheck, Status: install.Pass, Message: "1/1 replicas ready"}}
+
+		Expect(phaseTitle(validating, "0.1.0")).To(ContainSubstring("v0.1.0"))
+		Expect(phaseTitle(installing, "0.1.0")).To(ContainSubstring("v0.1.0"))
+	})
+
+	It("omits the version entirely when it isn't known yet", func() {
+		results := []install.Result{{Check: passingCheck, Status: install.Pass}}
+
+		Expect(phaseTitle(results, "")).To(ContainSubstring("Installing OSAC..."))
 	})
 })
 
@@ -76,7 +92,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: requiredCheck, Status: install.Failed, Message: "failed"},
 		}
 
-		got := renderStatus(results, 80, 0)
+		got := renderStatus(results, 80, 0, "")
 
 		Expect(got).To(ContainSubstring("1/2 ready"))
 	})
@@ -84,7 +100,7 @@ var _ = Describe("renderStatus", func() {
 	It("includes the phase title above the progress bar", func() {
 		results := []install.Result{{Check: passingCheck, Status: install.Pass}}
 
-		got := renderStatus(results, 80, 0)
+		got := renderStatus(results, 80, 0, "")
 
 		Expect(got).To(ContainSubstring("Installing OSAC"))
 	})
@@ -95,7 +111,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: warningCheck, Status: install.Failed, Message: "in progress"},
 		}
 
-		got := renderStatus(results, 80, 0)
+		got := renderStatus(results, 80, 0, "")
 
 		Expect(got).To(ContainSubstring("fulfillment-grpc-server"))
 		Expect(got).To(ContainSubstring("1/1 replicas ready"))
@@ -104,19 +120,19 @@ var _ = Describe("renderStatus", func() {
 	})
 
 	It("handles zero results without panicking", func() {
-		got := renderStatus(nil, 80, 0)
+		got := renderStatus(nil, 80, 0, "")
 
 		Expect(got).To(ContainSubstring("0/0 ready"))
 		Expect(got).To(ContainSubstring("No OSAC workloads found"))
 	})
 
 	It("falls back to a default width when given 0 or a negative width", func() {
-		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 0, 0) }).NotTo(Panic())
-		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, -5, 0) }).NotTo(Panic())
+		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 0, 0, "") }).NotTo(Panic())
+		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, -5, 0, "") }).NotTo(Panic())
 	})
 
 	It("fits the frame to a wide terminal instead of capping it, leaving a gutter unused", func() {
-		got := renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 131, 0)
+		got := renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 131, 0, "")
 
 		lines := strings.Split(got, "\n")
 		Expect(lines).NotTo(BeEmpty())
@@ -133,7 +149,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: operatorCheck, Status: install.Failed}, // prerequisite -- doesn't count
 		}
 
-		got := renderStatus(results, 80, 0)
+		got := renderStatus(results, 80, 0, "")
 
 		Expect(got).To(ContainSubstring("2/2 ready"))
 	})
@@ -144,7 +160,7 @@ var _ = Describe("renderStatus", func() {
 			{Check: namespaceCheck, Status: install.Pass, Message: "exists"},
 		}
 
-		got := renderStatus(results, 80, 0)
+		got := renderStatus(results, 80, 0, "")
 
 		Expect(got).NotTo(ContainSubstring("100%"))
 		Expect(got).To(ContainSubstring("0/0 ready"))
@@ -201,6 +217,24 @@ var _ = Describe("padName", func() {
 		got := padName("abcdefghij", 6)
 		Expect([]rune(got)).To(HaveLen(6))
 		Expect(got).To(HaveSuffix("…"))
+	})
+})
+
+var _ = Describe("progressLine", func() {
+	It("stays on one line at ordinary terminal widths, never wrapping the trailing ready count", func() {
+		var results []install.Result
+		for i := range 20 {
+			results = append(results, install.Result{
+				Check:  install.Check{Name: fmt.Sprintf("service-%d", i), Category: install.ServiceCategory},
+				Status: install.Pass,
+			})
+		}
+
+		for _, width := range []int{40, 76, 96, 127} {
+			got := progressLine(results, width)
+			Expect(got).NotTo(ContainSubstring("\n"), "width %d produced a wrapped progress line: %q", width, got)
+			Expect(got).To(ContainSubstring("20/20 ready"))
+		}
 	})
 })
 

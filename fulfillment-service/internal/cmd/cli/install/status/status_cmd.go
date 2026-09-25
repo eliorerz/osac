@@ -149,12 +149,12 @@ func (r *runnerContext) run(cmd *cobra.Command, _ []string) error {
 	checks = append(checks, install.SecretChecks(secretRefs)...)
 
 	if !r.args.watch {
-		results, err := gatherResults(ctx, clients, r.args.namespace, checks)
+		results, chartVersion, err := gatherResults(ctx, clients, r.args.namespace, checks)
 		if err != nil {
 			console.Errorf(ctx, "Failed to list OSAC's workloads: %v\n", err)
 			return exit.Error(1)
 		}
-		console.Infof(ctx, "%s", renderStatus(results, render.Width(console.Stdout()), 0))
+		console.Infof(ctx, "%s", renderStatus(results, render.Width(console.Stdout()), 0, chartVersion))
 		return nil
 	}
 

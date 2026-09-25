@@ -92,6 +92,15 @@ var _ = Describe("watchModel", func() {
 		Expect(cmd).NotTo(BeNil()) // schedules the next tick
 	})
 
+	It("stores the chart version alongside results on checkResultsMsg", func() {
+		next, _ := m.Update(checkResultsMsg{
+			results:      []install.Result{{Check: passingCheck, Status: install.Pass}},
+			chartVersion: "0.1.0",
+		})
+
+		Expect(next.(watchModel).chartVersion).To(Equal("0.1.0"))
+	})
+
 	It("stores a listing error separately from results, still schedules the next tick", func() {
 		next, cmd := m.Update(checkResultsMsg{err: errors.New("namespace not found")})
 
