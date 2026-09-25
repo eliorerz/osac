@@ -46,7 +46,12 @@
   requiredFor: [all]
   displayName: "cert-manager Operator for Red Hat OpenShift"
   namespace: cert-manager-operator
-  packagePrefix: openshift-cert-manager-operator
+  # The Subscription's package name is "openshift-cert-manager-operator",
+  # but the bundle's ClusterServiceVersion (what this check actually reads)
+  # ships as "cert-manager-operator.vX.Y.Z" -- confirmed against a live
+  # install; package name and CSV name are not the same string for this
+  # Operator.
+  packagePrefix: cert-manager-operator
   minVersion: "1.20.0"
   docsURL: "https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/security_and_compliance/cert-manager-operator-for-red-hat-openshift"
 
@@ -57,7 +62,10 @@
   requiredFor: [all]
   displayName: "Red Hat Ansible Automation Platform Operator"
   namespace: ansible-aap
-  packagePrefix: ansible-automation-platform-operator
+  # The Subscription's package name is
+  # "ansible-automation-platform-operator", but the bundle's CSV ships as
+  # "aap-operator.vX.Y.Z-..." -- confirmed against a live install.
+  packagePrefix: aap-operator
   minVersion: "2.6.0"
   docsURL: "https://docs.redhat.com/en/documentation/red_hat_ansible_automation_platform/2.6/html/installing_on_openshift_container_platform/index"
 
@@ -68,7 +76,10 @@
   requiredFor: [metering]
   displayName: "Streams for Apache Kafka"
   namespace: osac-kafka
-  packagePrefix: amq-streams
+  # The Subscription's package name is "amq-streams", but the bundle's CSV
+  # ships as "amqstreams.vX.Y.Z-N" (no hyphen) -- confirmed against a live
+  # install.
+  packagePrefix: amqstreams
   docsURL: "https://access.redhat.com/articles/6644711"
 
 - id: cnv-operator
@@ -78,7 +89,10 @@
   requiredFor: [vmaas]
   displayName: "OpenShift Virtualization"
   namespace: openshift-cnv
-  packagePrefix: kubevirt-hyperconverged
+  # The Subscription's package name is "kubevirt-hyperconverged", but the
+  # bundle's CSV ships as "kubevirt-hyperconverged-operator.vX.Y.Z" --
+  # confirmed against a live install.
+  packagePrefix: kubevirt-hyperconverged-operator
   docsURL: "https://docs.redhat.com/en/documentation/openshift_container_platform/4.22/html/virtualization/installing"
 
 - id: metallb-operator
@@ -98,6 +112,11 @@
   requiredFor: [caas]
   displayName: "multicluster engine for Kubernetes Operator"
   namespace: multicluster-engine
+  # UNVERIFIED against a live install (mce is disabled in vmaas-ci; the
+  # other four Operators' packagePrefix all turned out to differ from their
+  # Subscription's package name once checked against real CSVs -- this one
+  # may have the same problem). Verify against a live CaaS install before
+  # relying on mce-operator's result.
   packagePrefix: multicluster-engine
   docsURL: "https://docs.redhat.com/en/documentation/red_hat_advanced_cluster_management_for_kubernetes/2.13/html/clusters/cluster_mce_overview"
 

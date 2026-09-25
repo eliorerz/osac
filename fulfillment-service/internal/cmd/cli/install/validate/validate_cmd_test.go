@@ -93,8 +93,8 @@ func newPassingClients() *install.Clients {
 			scheme,
 			listKinds,
 			newUnstructuredCRD("certificates.cert-manager.io"),
-			newUnstructuredCSV("cert-manager-operator", "openshift-cert-manager-operator.v1.20.0", "Succeeded", "1.20.0"),
-			newUnstructuredCSV("ansible-aap", "ansible-automation-platform-operator.v2.6.0", "Succeeded", "2.6.0"),
+			newUnstructuredCSV("cert-manager-operator", "cert-manager-operator.v1.20.0", "Succeeded", "1.20.0"),
+			newUnstructuredCSV("ansible-aap", "aap-operator.v2.6.0", "Succeeded", "2.6.0"),
 		),
 	}
 }
@@ -206,8 +206,8 @@ var _ = Describe("Validate command execution", func() {
 				scheme,
 				listKinds,
 				newUnstructuredCRD("certificates.cert-manager.io"),
-				newUnstructuredCSV("cert-manager-operator", "openshift-cert-manager-operator.v1.20.0", "Succeeded", "1.20.0"),
-				newUnstructuredCSV("ansible-aap", "ansible-automation-platform-operator.v2.6.0", "Succeeded", "2.6.0"),
+				newUnstructuredCSV("cert-manager-operator", "cert-manager-operator.v1.20.0", "Succeeded", "1.20.0"),
+				newUnstructuredCSV("ansible-aap", "aap-operator.v2.6.0", "Succeeded", "2.6.0"),
 			),
 		}
 		runner := &runnerContext{
