@@ -38,10 +38,9 @@ const (
 
 const (
 	defaultWidth    = 80
-	frameMaxWidth   = 100
 	frameMinWidth   = 24
 	frameOverhead   = 4 // border (2 cols) + horizontal padding (2 cols)
-	maxBarWidth     = 60
+	maxBarWidth     = 100
 	minBarWidth     = 10
 	nameColWidth    = 36
 	barWidthTrim    = 4 // margin subtracted from the content width for the bar
@@ -129,17 +128,18 @@ func renderError(err error, width int) string {
 	return frame(b.String(), frameWidth)
 }
 
-// frameDimensions clamps width to [frameMinWidth, frameMaxWidth] (falling
-// back to defaultWidth when width is unknown) and returns both the outer
-// frame width and the usable content width inside its border and padding.
+// frameDimensions fits the frame to the terminal's actual width (floored
+// at frameMinWidth so a tiny terminal still gets a usable frame, but with
+// no upper cap -- confirmed live that capping it left a wide terminal with
+// a needlessly narrow dashboard and a large empty gutter beside it),
+// falling back to defaultWidth when width is unknown (0, e.g. not a
+// terminal), and returns both the outer frame width and the usable
+// content width inside its border and padding.
 func frameDimensions(width int) (frameWidth, contentWidth int) {
 	if width <= 0 {
 		width = defaultWidth
 	}
 	frameWidth = width
-	if frameWidth > frameMaxWidth {
-		frameWidth = frameMaxWidth
-	}
 	if frameWidth < frameMinWidth {
 		frameWidth = frameMinWidth
 	}

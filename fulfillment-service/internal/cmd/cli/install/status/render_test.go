@@ -115,6 +115,16 @@ var _ = Describe("renderStatus", func() {
 		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, -5, 0) }).NotTo(Panic())
 	})
 
+	It("fits the frame to a wide terminal instead of capping it, leaving a gutter unused", func() {
+		got := renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 131, 0)
+
+		lines := strings.Split(got, "\n")
+		Expect(lines).NotTo(BeEmpty())
+		// The frame border line should span the full requested width, not
+		// stop short at some smaller cap.
+		Expect(lipgloss.Width(lines[0])).To(Equal(131))
+	})
+
 	It("excludes prerequisite results (Resources/Operators) from the progress bar's ready count", func() {
 		results := []install.Result{
 			{Check: passingCheck, Status: install.Pass},    // counts: pass
