@@ -314,11 +314,14 @@ check_postgres_prerequisites() {
     if [[ ${bundled_status} -eq 2 ]]; then
         _postgres_prereq_error "Values file ${values_file} not found or unreadable."
     elif [[ ${bundled_status} -eq 0 ]]; then
-        # bundledPostgres's Deployment/Service are templated inside charts/osac
-        # itself and created by the very `helm upgrade --install osac --wait`
-        # this check runs ahead of -- nothing to verify yet, and checking now
-        # would always fail (the Service doesn't exist until that install
-        # creates it). The chart's own --wait covers Postgres readiness.
+        # bundledPostgres's Deployment/Service/Secrets are templated inside
+        # charts/osac-infra (a separate, earlier release installed by `make
+        # install-infra`, not by the `osac` chart itself) -- by the time this
+        # runs, install-infra has already completed, so the Secrets/Service
+        # do exist. Not re-verified here regardless: the osac chart's own
+        # pre-install-validate hook already requires these Secrets exist
+        # (--require-secret), and the Deployment's own readiness is what
+        # `helm upgrade --install osac --wait` blocks on.
         echo "bundledPostgres enabled -- readiness will be verified by the chart's own install --wait."
         return 0
     else

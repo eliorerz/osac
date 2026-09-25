@@ -184,7 +184,7 @@ oc get secret config-as-code-manifest-ig -n ${NAMESPACE}  # license exists?
 oc logs deployment/fulfillment-grpc-server -n ${NAMESPACE}
 ```
 
-Common causes: missing `fulfillment-db` secret, cert-manager certificates
+Common causes: missing `osac-db-config` secret, cert-manager certificates
 not issued (`oc get certificate -n ${NAMESPACE}`), missing controller
 credentials.
 

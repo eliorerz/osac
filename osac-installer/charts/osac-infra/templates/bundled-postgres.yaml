@@ -8,7 +8,16 @@
 apiVersion: v1
 kind: Secret
 metadata:
-  name: fulfillment-db
+  # Named to match service.database.connection's secret reference in every
+  # instance-values profile (vmaas-ci, bmaas-ci, caas-ci, full-ci) -- those
+  # values files are the actual contract osac's Deployment and the
+  # pre-install-validate hook's --require-secret checks read from, so this
+  # name can't drift from theirs without breaking both. Confirmed live: with
+  # the old "fulfillment-db" name, `osac install validate`'s
+  # --require-secret check (and, downstream, the fulfillment-service
+  # Deployment itself) could never find this secret in a bundledPostgres
+  # install.
+  name: osac-db-config
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "osac-infra.labels" . | nindent 4 }}
@@ -19,7 +28,9 @@ stringData:
 apiVersion: v1
 kind: Secret
 metadata:
-  name: metering-db
+  # See osac-db-config above -- same reasoning, matching
+  # metering.database.connection's secret reference instead.
+  name: osac-db-metering-config
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "osac-infra.labels" . | nindent 4 }}
@@ -41,7 +52,9 @@ spec:
   commonName: {{ .Values.bundledPostgres.database.user | quote }}
   usages:
   - client auth
-  secretName: postgres-client-cert-service
+  # See osac-db-config above -- matches service.database.connection's
+  # client-cert secret reference.
+  secretName: osac-db-client-cert
   privateKey:
     rotationPolicy: Always
 ---
@@ -59,7 +72,9 @@ spec:
   commonName: "metering"
   usages:
   - client auth
-  secretName: postgres-client-cert-metering
+  # See osac-db-metering-config above -- matches
+  # metering.database.connection's client-cert secret reference.
+  secretName: osac-db-metering-client-cert
   privateKey:
     rotationPolicy: Always
 ---
