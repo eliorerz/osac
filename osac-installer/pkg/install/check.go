@@ -81,6 +81,9 @@ const (
 	// JobCategory is a one-shot OSAC configuration Job the osac Helm chart
 	// runs (e.g. the AAP bootstrap job, db-init).
 	JobCategory
+	// NamespaceCategory is the install namespace itself -- whether it
+	// exists yet, checked before anything in it is listed.
+	NamespaceCategory
 )
 
 // String implements fmt.Stringer.
@@ -94,6 +97,8 @@ func (c Category) String() string {
 		return "service"
 	case JobCategory:
 		return "job"
+	case NamespaceCategory:
+		return "namespace"
 	default:
 		return "unknown"
 	}

@@ -19,13 +19,16 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
-// WorkloadChecks lists every Deployment, StatefulSet, DaemonSet, and Job
-// that currently exists in namespace and reports whether each has reached
-// its expected ready state -- the actual OSAC services and one-shot
-// configuration jobs the osac Helm chart installs.
+// WorkloadChecks first checks whether namespace exists, then -- only if it
+// does -- lists every Deployment, StatefulSet, DaemonSet, and Job in it and
+// reports whether each has reached its expected ready state: the actual
+// OSAC services and one-shot configuration jobs the osac Helm chart
+// installs, plus the namespace they live in, all part of the same watched
+// lifecycle from "not created yet" through "fully ready".
 //
 // Unlike DefaultChecks (a fixed matrix checked against live cluster
 // state), there's no static list of OSAC's installed workloads to declare
@@ -37,7 +40,18 @@ import (
 // directly rather than []Check + a separate RunAll pass: enumerating what
 // to check and finding out its status happen in the same List call.
 func WorkloadChecks(ctx context.Context, clients *Clients, namespace string) ([]Result, error) {
-	var results []Result
+	nsResult, exists, err := namespaceResult(ctx, clients, namespace)
+	if err != nil {
+		return nil, err
+	}
+	results := []Result{nsResult}
+	if !exists {
+		// Nothing to list yet -- `helm install` (or `--create-namespace`)
+		// hasn't created the namespace. Not an error: this is the expected
+		// state at the very start of an install, and --watch should keep
+		// polling through it smoothly rather than failing here.
+		return results, nil
+	}
 
 	deployments, err := clients.Typed.AppsV1().Deployments(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
@@ -72,6 +86,32 @@ func WorkloadChecks(ctx context.Context, clients *Clients, namespace string) ([]
 	}
 
 	return results, nil
+}
+
+// namespaceResult reports whether namespace exists. A Warning (not
+// Required) severity when it doesn't: absent is the expected state before
+// `helm install` runs, not a failure to alarm over -- the same reasoning
+// jobResult applies to a still-running Job. The bool return distinguishes
+// "checked, and it doesn't exist" from an actual error (RBAC denied,
+// connection failure) reaching the caller.
+func namespaceResult(ctx context.Context, clients *Clients, namespace string) (Result, bool, error) {
+	_, err := clients.Typed.CoreV1().Namespaces().Get(ctx, namespace, metav1.GetOptions{})
+	switch {
+	case apierrors.IsNotFound(err):
+		return Result{
+			Check:   Check{Name: namespace, Description: "Namespace", Severity: Warning, Category: NamespaceCategory},
+			Status:  Failed,
+			Message: "not created yet",
+		}, false, nil
+	case err != nil:
+		return Result{}, false, fmt.Errorf("failed to check namespace %q: %w", namespace, err)
+	default:
+		return Result{
+			Check:   Check{Name: namespace, Description: "Namespace", Severity: Required, Category: NamespaceCategory},
+			Status:  Pass,
+			Message: "exists",
+		}, true, nil
+	}
 }
 
 func deploymentResult(d appsv1.Deployment) Result {
