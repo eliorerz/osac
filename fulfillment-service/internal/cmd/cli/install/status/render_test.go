@@ -32,6 +32,43 @@ var (
 	operatorCheck = install.Check{Name: "cert-manager-operator", Severity: install.Required, Category: install.OperatorCategory}
 )
 
+var _ = Describe("phaseTitle", func() {
+	It("reads 'Installing OSAC...' once any workload besides pre-install-validate has been created", func() {
+		results := []install.Result{{Check: passingCheck, Status: install.Pass, Message: "1/1 replicas ready"}}
+
+		Expect(phaseTitle(results)).To(ContainSubstring("Installing OSAC"))
+	})
+
+	It("reads 'Validating prerequisites...' while nothing besides pre-install-validate has been created yet", func() {
+		validateCheck := install.Check{Name: preInstallValidateJobName, Category: install.JobCategory}
+		results := []install.Result{
+			{Check: validateCheck, Status: install.Progressing, Message: "not created yet"},
+			{Check: warningCheck, Status: install.Progressing, Message: "not created yet"}, // some other Job, also not created yet
+		}
+
+		Expect(phaseTitle(results)).To(ContainSubstring("Validating prerequisites"))
+	})
+
+	It("reads 'Installing OSAC...' even when pre-install-validate's own Job has disappeared (deleted on a retried upgrade)", func() {
+		// No pre-install-validate result at all here -- Helm's
+		// hook-delete-policy can remove it even after it already
+		// succeeded, on a retried install/upgrade (confirmed live). The
+		// signal has to come from elsewhere having actually been created.
+		results := []install.Result{{Check: passingCheck, Status: install.Progressing, Message: "0/1 replicas ready"}}
+
+		Expect(phaseTitle(results)).To(ContainSubstring("Installing OSAC"))
+	})
+
+	It("ignores prerequisite results (Resources/Operators) when deciding the phase", func() {
+		results := []install.Result{
+			{Check: resourceCheck, Status: install.Pass, Message: "default StorageClass found"},
+			{Check: operatorCheck, Status: install.Pass, Message: "installed"},
+		}
+
+		Expect(phaseTitle(results)).To(ContainSubstring("Validating prerequisites"))
+	})
+})
+
 var _ = Describe("renderStatus", func() {
 	It("includes the passed/total count", func() {
 		results := []install.Result{
@@ -42,6 +79,14 @@ var _ = Describe("renderStatus", func() {
 		got := renderStatus(results, 80, 0)
 
 		Expect(got).To(ContainSubstring("1/2 ready"))
+	})
+
+	It("includes the phase title above the progress bar", func() {
+		results := []install.Result{{Check: passingCheck, Status: install.Pass}}
+
+		got := renderStatus(results, 80, 0)
+
+		Expect(got).To(ContainSubstring("Installing OSAC"))
 	})
 
 	It("includes every check's name and message", func() {

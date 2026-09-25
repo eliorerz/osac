@@ -50,12 +50,13 @@ const (
 )
 
 // renderStatus renders results as a framed dashboard: a small "OSAC" banner,
-// a progress bar scoped to install progress (Namespace/Services/Jobs; see
-// installationCategories), and one section per install.Category, fitted to
-// width. Pure and stateless -- given the same results and width, it always
-// renders the same string -- so it's testable without a real terminal or
-// tea.Program, and reusable by both the one-shot render path and the
-// watch-mode tea.Model's View.
+// a one-line phase title (see phaseTitle), a progress bar scoped to install
+// progress (Namespace/Services/Jobs; see installationCategories), and one
+// section per install.Category, fitted to width. Pure and stateless --
+// given the same results and width, it always renders the same string --
+// so it's testable without a real terminal or tea.Program, and reusable by
+// both the one-shot render path and the watch-mode tea.Model's View.
+//
 // spinnerFrame is which frame of the Progressing spinner (see
 // spinnerFrames) to draw. The one-shot render path has no animation loop
 // driving it, so it always passes 0 -- a single static frame, which is
@@ -65,11 +66,51 @@ func renderStatus(results []install.Result, width int, spinnerFrame int) string 
 
 	var b strings.Builder
 	b.WriteString(banner())
+	b.WriteString(phaseTitle(results))
+	b.WriteString("\n")
 	b.WriteString(progressLine(results, contentWidth))
 	b.WriteString("\n\n")
 	b.WriteString(sections(results, contentWidth, spinnerFrame))
 
 	return frame(strings.TrimRight(b.String(), "\n"), frameWidth)
+}
+
+// preInstallValidateJobName is the pre-install-validate hook's Job name
+// with the release name every install-osac invocation in this repo uses
+// (see helmReleaseName's Go counterpart in osac-installer/pkg/install) --
+// {{ include "osac.fullname" . }}-pre-install-validate, which resolves to
+// this literal name for the release name "osac".
+const preInstallValidateJobName = "osac-pre-install-validate"
+
+// phaseTitle is a one-line headline distinguishing the two things a viewer
+// actually cares about in sequence: is the cluster still being validated as
+// ready to install, or is OSAC itself now installing. It doesn't switch the
+// progress bar's meaning or reset it: that bar's whole point is to climb
+// smoothly and honestly from the start, and a phase-driven reset would
+// reintroduce the same confusing jump this dashboard exists to avoid.
+//
+// Driven by whether anything OTHER than the pre-install-validate job has
+// actually been created yet, not by that job's own visibility: Helm's
+// hook-delete-policy can make a hook Job disappear on a retried
+// install/upgrade even though it already succeeded earlier (confirmed
+// live), which would otherwise make this claim "still validating" long
+// after validation actually finished. Pre-install-validate runs before
+// every other hook and before any of the chart's own plain resources, so
+// "nothing else has been created yet" is the reliable signal that
+// validation hasn't finished, regardless of whether its own Job is still
+// visible.
+func phaseTitle(results []install.Result) string {
+	title := "Validating prerequisites..."
+	for _, result := range results {
+		if !installationCategories[result.Check.Category] || result.Check.Name == preInstallValidateJobName {
+			continue
+		}
+		if result.Message != "not created yet" {
+			title = "Installing OSAC..."
+			break
+		}
+	}
+	return lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorHeader)).Render(title)
 }
 
 // renderError renders err inside the same framed banner as renderStatus,
