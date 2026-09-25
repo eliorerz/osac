@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/osac-project/osac/fulfillment-service/internal/cmd/cli/install/discover"
+	"github.com/osac-project/osac/fulfillment-service/internal/cmd/cli/install/status"
 	"github.com/osac-project/osac/fulfillment-service/internal/cmd/cli/install/validate"
 )
 
@@ -32,6 +33,7 @@ func Cmd() *cobra.Command {
 		DisableFlagsInUseLine: true,
 	}
 	result.AddCommand(discover.Cmd())
+	result.AddCommand(status.Cmd())
 	result.AddCommand(validate.Cmd())
 	return result
 }
@@ -47,7 +49,7 @@ Unlike the rest of this CLI, these commands are Kubernetes administration
 tools: they require kubectl/oc-level cluster access, not an
 {{ bt }}osac login{{ bt }} session, and assume familiarity with Kubernetes. They
 exist for whoever sets up or operates a Hub cluster — a cluster admin or
-SRE — and some of them, like {{ bt }}discover{{ bt }} and {{ bt }}validate{{ bt }}, run
-before OSAC, and therefore before fulfillment-service, exists on that
-cluster.
+SRE — and some of them, like {{ bt }}discover{{ bt }}, {{ bt }}status{{ bt }}, and
+{{ bt }}validate{{ bt }}, run before OSAC, and therefore before
+fulfillment-service, exists on that cluster.
 `
