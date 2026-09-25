@@ -13,7 +13,13 @@ metadata:
   annotations:
     "helm.sh/hook": pre-install,pre-upgrade
     "helm.sh/hook-weight": "-10"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    # No hook-succeeded here (unlike the ServiceAccount/RBAC below, which
+    # exist only to run this Job and have nothing worth keeping around): a
+    # completed run stays visible in `oc get jobs`/`osac install status`
+    # like every other install step, instead of vanishing the moment it
+    # succeeds. before-hook-creation still cleans up the PREVIOUS run's Job
+    # before a new install/upgrade starts one.
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   template:
     metadata:
