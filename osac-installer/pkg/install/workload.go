@@ -25,21 +25,29 @@ import (
 )
 
 // WorkloadChecks first checks whether namespace exists, then -- only if it
-// does -- lists every Deployment, StatefulSet, DaemonSet, and Job in it and
-// reports whether each has reached its expected ready state: the actual
-// OSAC services and one-shot configuration jobs the osac Helm chart
-// installs, plus the namespace they live in, all part of the same watched
-// lifecycle from "not created yet" through "fully ready".
+// does -- reports on every Deployment, StatefulSet, DaemonSet, and Job the
+// "osac" Helm release declares (read from the release's own recorded
+// manifest, including its hooks), plus the namespace they live in: the
+// actual OSAC services and one-shot configuration jobs the osac Helm chart
+// installs, all part of the same watched lifecycle from "not created yet"
+// through "fully ready". A workload the manifest declares but the cluster
+// doesn't have yet reports as Progressing/"not created yet", the same
+// treatment namespaceResult already gives the namespace itself -- so the
+// full expected set is visible (and the progress bar has an honest
+// denominator) from the moment `helm install` starts, not just once each
+// piece happens to already exist.
 //
 // Unlike DefaultChecks (a fixed matrix checked against live cluster
 // state), there's no static list of OSAC's installed workloads to declare
-// ahead of time: what actually exists depends on which services this
-// specific install enabled (global.services.*, ui.enabled,
-// metering.enabled, bundledVault.enabled, ...), so the check set itself is
-// discovered from the cluster rather than read from
-// data/prerequisites.yaml. For the same reason this returns []Result
-// directly rather than []Check + a separate RunAll pass: enumerating what
-// to check and finding out its status happen in the same List call.
+// ahead of time in this package: what actually exists depends on which
+// services this specific install enabled (global.services.*, ui.enabled,
+// metering.enabled, bundledVault.enabled, ...) and is a property of that
+// specific Helm release, not of this Go code -- so the check set is read
+// from the release itself. If no release has been recorded yet (the very
+// start of `helm install`, before Helm gets past its own pre-install
+// hooks), this falls back to discovering whatever's actually in the
+// cluster, the same way this always worked before the release was
+// readable.
 func WorkloadChecks(ctx context.Context, clients *Clients, namespace string) ([]Result, error) {
 	nsResult, exists, err := namespaceResult(ctx, clients, namespace)
 	if err != nil {
@@ -58,35 +66,124 @@ func WorkloadChecks(ctx context.Context, clients *Clients, namespace string) ([]
 	if err != nil {
 		return nil, fmt.Errorf("failed to list Deployments in namespace %q: %w", namespace, err)
 	}
-	for _, d := range deployments.Items {
-		results = append(results, deploymentResult(d))
-	}
-
 	statefulSets, err := clients.Typed.AppsV1().StatefulSets(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list StatefulSets in namespace %q: %w", namespace, err)
 	}
-	for _, s := range statefulSets.Items {
-		results = append(results, statefulSetResult(s))
-	}
-
 	daemonSets, err := clients.Typed.AppsV1().DaemonSets(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list DaemonSets in namespace %q: %w", namespace, err)
 	}
-	for _, ds := range daemonSets.Items {
-		results = append(results, daemonSetResult(ds))
-	}
-
 	jobs, err := clients.Typed.BatchV1().Jobs(namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("failed to list Jobs in namespace %q: %w", namespace, err)
 	}
-	for _, j := range jobs.Items {
-		results = append(results, jobResult(j))
+
+	release, err := latestHelmRelease(ctx, clients, namespace, helmReleaseName)
+	if err != nil {
+		return nil, err
+	}
+	if release == nil {
+		for _, d := range deployments.Items {
+			results = append(results, deploymentResult(d))
+		}
+		for _, s := range statefulSets.Items {
+			results = append(results, statefulSetResult(s))
+		}
+		for _, ds := range daemonSets.Items {
+			results = append(results, daemonSetResult(ds))
+		}
+		for _, j := range jobs.Items {
+			results = append(results, jobResult(j))
+		}
+		return results, nil
+	}
+
+	expected, err := expectedWorkloads(release)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read the %q Helm release's manifest: %w", helmReleaseName, err)
+	}
+
+	deploymentsByName := indexDeployments(deployments.Items)
+	statefulSetsByName := indexStatefulSets(statefulSets.Items)
+	daemonSetsByName := indexDaemonSets(daemonSets.Items)
+	jobsByName := indexJobs(jobs.Items)
+
+	for _, item := range expected {
+		switch item.Kind {
+		case "Deployment":
+			if d, ok := deploymentsByName[item.Name]; ok {
+				results = append(results, deploymentResult(d))
+			} else {
+				results = append(results, notYetCreatedResult(item.Name, "Deployment", ServiceCategory))
+			}
+		case "StatefulSet":
+			if s, ok := statefulSetsByName[item.Name]; ok {
+				results = append(results, statefulSetResult(s))
+			} else {
+				results = append(results, notYetCreatedResult(item.Name, "StatefulSet", ServiceCategory))
+			}
+		case "DaemonSet":
+			if ds, ok := daemonSetsByName[item.Name]; ok {
+				results = append(results, daemonSetResult(ds))
+			} else {
+				results = append(results, notYetCreatedResult(item.Name, "DaemonSet", ServiceCategory))
+			}
+		case "Job":
+			if j, ok := jobsByName[item.Name]; ok {
+				results = append(results, jobResult(j))
+			} else {
+				results = append(results, notYetCreatedResult(item.Name, "Job", JobCategory))
+			}
+		}
 	}
 
 	return results, nil
+}
+
+// notYetCreatedResult reports a workload the Helm release's manifest
+// declares but that doesn't exist in the cluster yet -- the same
+// Progressing/"not created yet" treatment namespaceResult gives the
+// namespace itself, for the same reason: absent is the expected state
+// before Helm gets around to creating it, not a failure.
+func notYetCreatedResult(name, description string, category Category) Result {
+	return Result{
+		Check:   Check{Name: name, Description: description, Severity: Warning, Category: category},
+		Status:  Progressing,
+		Message: "not created yet",
+	}
+}
+
+func indexDeployments(items []appsv1.Deployment) map[string]appsv1.Deployment {
+	m := make(map[string]appsv1.Deployment, len(items))
+	for _, d := range items {
+		m[d.Name] = d
+	}
+	return m
+}
+
+func indexStatefulSets(items []appsv1.StatefulSet) map[string]appsv1.StatefulSet {
+	m := make(map[string]appsv1.StatefulSet, len(items))
+	for _, s := range items {
+		m[s.Name] = s
+	}
+	return m
+}
+
+func indexDaemonSets(items []appsv1.DaemonSet) map[string]appsv1.DaemonSet {
+	m := make(map[string]appsv1.DaemonSet, len(items))
+	for _, ds := range items {
+		m[ds.Name] = ds
+	}
+	return m
+}
+
+func indexJobs(items []batchv1.Job) map[string]batchv1.Job {
+	m := make(map[string]batchv1.Job, len(items))
+	for _, j := range items {
+		m[j.Name] = j
+	}
+	return m
 }
 
 // namespaceResult reports whether namespace exists. A Warning (not

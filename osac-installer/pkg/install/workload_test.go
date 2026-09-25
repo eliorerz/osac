@@ -243,6 +243,87 @@ var _ = Describe("WorkloadChecks", func() {
 		Expect(results[0].Status).To(Equal(Progressing))
 		Expect(results[0].Message).To(Equal("not created yet"))
 	})
+
+	Describe("driven by the Helm release manifest, once one's recorded", func() {
+		It("reports a workload the manifest declares but the cluster doesn't have yet as Progressing/\"not created yet\"", func() {
+			clients := newFakeClients([]runtime.Object{
+				namespaceObj("osac"),
+				newHelmReleaseSecret("osac", "osac", 1,
+					"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: fulfillment-grpc-server\n"),
+			}, nil)
+
+			results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+			Expect(err).NotTo(HaveOccurred())
+			d := byName(results)["fulfillment-grpc-server"]
+			Expect(d.Check.Category).To(Equal(ServiceCategory))
+			Expect(d.Status).To(Equal(Progressing))
+			Expect(d.Message).To(Equal("not created yet"))
+		})
+
+		It("reports the workload's real readiness once it exists, same as the fallback path would", func() {
+			clients := newFakeClients([]runtime.Object{
+				namespaceObj("osac"),
+				newHelmReleaseSecret("osac", "osac", 1,
+					"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: fulfillment-grpc-server\n"),
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{Name: "fulfillment-grpc-server", Namespace: "osac"},
+					Spec:       appsv1.DeploymentSpec{Replicas: int32Ptr(1)},
+					Status:     appsv1.DeploymentStatus{ReadyReplicas: 1},
+				},
+			}, nil)
+
+			results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+			Expect(err).NotTo(HaveOccurred())
+			d := byName(results)["fulfillment-grpc-server"]
+			Expect(d.Status).To(Equal(Pass))
+			Expect(d.Message).To(ContainSubstring("1/1"))
+		})
+
+		It("includes a Job declared only in a hook (e.g. the AAP bootstrap job), not just the plain manifest", func() {
+			releaseSecret := newHelmReleaseSecret("osac", "osac", 1, "",
+				"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: osac-aap-bootstrap\n")
+			clients := newFakeClients([]runtime.Object{namespaceObj("osac"), releaseSecret}, nil)
+
+			results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+			Expect(err).NotTo(HaveOccurred())
+			job := byName(results)["osac-aap-bootstrap"]
+			Expect(job.Check.Category).To(Equal(JobCategory))
+			Expect(job.Status).To(Equal(Progressing))
+			Expect(job.Message).To(Equal("not created yet"))
+		})
+
+		It("does not report a workload that exists but isn't declared by this release's manifest", func() {
+			clients := newFakeClients([]runtime.Object{
+				namespaceObj("osac"),
+				newHelmReleaseSecret("osac", "osac", 1,
+					"apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: fulfillment-grpc-server\n"),
+				&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "leftover-from-an-old-chart", Namespace: "osac"}},
+			}, nil)
+
+			results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(byName(results)).NotTo(HaveKey("leftover-from-an-old-chart"))
+		})
+
+		It("falls back to discovering whatever actually exists when no release has been recorded yet", func() {
+			clients := newFakeClients([]runtime.Object{
+				namespaceObj("osac"),
+				&appsv1.Deployment{
+					ObjectMeta: metav1.ObjectMeta{Name: "fulfillment-grpc-server", Namespace: "osac"},
+					Status:     appsv1.DeploymentStatus{ReadyReplicas: 1},
+				},
+			}, nil)
+
+			results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+			Expect(err).NotTo(HaveOccurred())
+			Expect(byName(results)).To(HaveKey("fulfillment-grpc-server"))
+		})
+	})
 })
 
 var _ = Describe("jobResult and friends don't panic on zero-value objects", func() {
