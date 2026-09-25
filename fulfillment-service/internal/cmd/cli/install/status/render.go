@@ -58,12 +58,12 @@ const (
 )
 
 // renderStatus renders results as a framed dashboard: a small "OSAC" banner,
-// a progress bar (passed/total), and one Resources/Operators section per
-// install.Category (ServiceCategory/JobCategory), fitted to width. Pure and
-// stateless -- given the same results and width, it always renders the
-// same string -- so it's testable without a real terminal or tea.Program,
-// and reusable by both the one-shot render path and the watch-mode
-// tea.Model's View.
+// a progress bar scoped to install progress (Namespace/Services/Jobs; see
+// installationCategories), and one section per install.Category, fitted to
+// width. Pure and stateless -- given the same results and width, it always
+// renders the same string -- so it's testable without a real terminal or
+// tea.Program, and reusable by both the one-shot render path and the
+// watch-mode tea.Model's View.
 func renderStatus(results []install.Result, width int) string {
 	frameWidth, contentWidth := frameDimensions(width)
 
@@ -123,16 +123,36 @@ func frame(content string, frameWidth int) string {
 	return style.Render(content)
 }
 
-// sections groups results into Services/Jobs (install.Category), rendering
-// only the sections that actually have entries -- a namespace with no
-// Jobs currently running shouldn't print an empty "JOBS" heading.
+// installationCategories are the install.Category values that count toward
+// the progress bar's ready-percentage: the namespace and the workloads
+// actually being installed right now. Prerequisite categories (Resources,
+// Operators) are shown in their own sections for context -- whether the
+// cluster was ready to install -- but deliberately don't move the bar,
+// which tracks the install's own progress, not the cluster's readiness
+// before it started.
+var installationCategories = map[install.Category]bool{
+	install.NamespaceCategory: true,
+	install.ServiceCategory:   true,
+	install.JobCategory:       true,
+}
+
+// sections groups results into Namespace/Services/Jobs first (matching the
+// actual install lifecycle -- the namespace has to exist before anything in
+// it can), then Resources/Operators (the prerequisite checks, shown for
+// context after the install-progress sections), rendering only the
+// sections that actually have entries. WorkloadChecks always includes the
+// namespace result, so this is empty only when called directly with
+// results that omit it entirely (e.g. a test).
 func sections(results []install.Result, width int) string {
 	if len(results) == 0 {
 		return "No OSAC workloads found in this namespace.\n"
 	}
 	var b strings.Builder
+	writeSection(&b, "NAMESPACE", filterCategory(results, install.NamespaceCategory), width)
 	writeSection(&b, "SERVICES", filterCategory(results, install.ServiceCategory), width)
 	writeSection(&b, "JOBS", filterCategory(results, install.JobCategory), width)
+	writeSection(&b, "RESOURCES", filterCategory(results, install.ResourceCategory), width)
+	writeSection(&b, "OPERATORS", filterCategory(results, install.OperatorCategory), width)
 	return b.String()
 }
 
@@ -177,12 +197,16 @@ func progressLine(results []install.Result, width int) string {
 	)
 
 	passed := 0
+	total := 0
 	for _, result := range results {
+		if !installationCategories[result.Check.Category] {
+			continue
+		}
+		total++
 		if result.Status == install.Pass {
 			passed++
 		}
 	}
-	total := len(results)
 	var percent float64
 	if total > 0 {
 		percent = float64(passed) / float64(total)

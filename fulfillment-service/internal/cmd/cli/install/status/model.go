@@ -36,37 +36,61 @@ type checkResultsMsg struct {
 type tickMsg time.Time
 
 // watchModel is the tea.Model driving `osac install status --watch`: it
-// re-lists namespace's workloads on an interval and redraws in place,
-// fitted to the terminal's current size (tracked via tea.WindowSizeMsg).
+// re-checks namespace's workloads and the prerequisite matrix (checks) on
+// an interval and redraws in place, fitted to the terminal's current size
+// (tracked via tea.WindowSizeMsg).
 type watchModel struct {
 	ctx       context.Context //nolint:containedctx // bubbletea's Update/Init have no context parameter to thread this through otherwise.
 	clients   *install.Clients
 	namespace string
-	interval  time.Duration
+	// checks is the prerequisite matrix (built once from CheckOptions, not
+	// re-derived per tick): unlike workloads, what to check doesn't change
+	// between ticks, only each check's live result does.
+	checks   []install.Check
+	interval time.Duration
 
 	results []install.Result
 	err     error
 	width   int
 }
 
-func newWatchModel(ctx context.Context, clients *install.Clients, namespace string, interval time.Duration) watchModel {
+func newWatchModel(ctx context.Context, clients *install.Clients, namespace string, checks []install.Check, interval time.Duration) watchModel {
 	return watchModel{
 		ctx:       ctx,
 		clients:   clients,
 		namespace: namespace,
+		checks:    checks,
 		interval:  interval,
 	}
 }
 
 func (m watchModel) Init() tea.Cmd {
-	return listWorkloads(m.ctx, m.clients, m.namespace)
+	return gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks)
 }
 
-func listWorkloads(ctx context.Context, clients *install.Clients, namespace string) tea.Cmd {
+// gatherResultsCmd combines the namespace/workload results (WorkloadChecks)
+// with the prerequisite results (RunAll over checks) into a single
+// checkResultsMsg, so the view always renders both from one consistent
+// snapshot rather than two independently-timed updates.
+func gatherResultsCmd(ctx context.Context, clients *install.Clients, namespace string, checks []install.Check) tea.Cmd {
 	return func() tea.Msg {
-		results, err := install.WorkloadChecks(ctx, clients, namespace)
-		return checkResultsMsg{results: results, err: err}
+		results, err := gatherResults(ctx, clients, namespace, checks)
+		if err != nil {
+			return checkResultsMsg{err: err}
+		}
+		return checkResultsMsg{results: results}
 	}
+}
+
+// gatherResults is gatherResultsCmd's non-tea.Cmd core, shared with the
+// one-shot render path (without --watch) in status_cmd.go.
+func gatherResults(ctx context.Context, clients *install.Clients, namespace string, checks []install.Check) ([]install.Result, error) {
+	results, err := install.WorkloadChecks(ctx, clients, namespace)
+	if err != nil {
+		return nil, err
+	}
+	results = append(results, install.RunAll(ctx, clients, checks)...)
+	return results, nil
 }
 
 func tick(interval time.Duration) tea.Cmd {
@@ -89,7 +113,7 @@ func (m watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = msg.err
 		return m, tick(m.interval)
 	case tickMsg:
-		return m, listWorkloads(m.ctx, m.clients, m.namespace)
+		return m, gatherResultsCmd(m.ctx, m.clients, m.namespace, m.checks)
 	}
 	return m, nil
 }

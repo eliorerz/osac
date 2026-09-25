@@ -36,12 +36,13 @@ var _ = Describe("watchModel", func() {
 
 	BeforeEach(func() {
 		clients = &install.Clients{Typed: fake.NewSimpleClientset(
+			namespaceObj("osac"),
 			&appsv1.Deployment{
 				ObjectMeta: metav1.ObjectMeta{Name: "fulfillment-grpc-server", Namespace: "osac"},
 				Status:     appsv1.DeploymentStatus{ReadyReplicas: 1},
 			},
 		)}
-		m = newWatchModel(context.Background(), clients, "osac", time.Second)
+		m = newWatchModel(context.Background(), clients, "osac", nil, time.Second)
 	})
 
 	It("kicks off a workload listing from Init", func() {
@@ -52,8 +53,29 @@ var _ = Describe("watchModel", func() {
 		results, ok := msg.(checkResultsMsg)
 		Expect(ok).To(BeTrue())
 		Expect(results.err).NotTo(HaveOccurred())
-		Expect(results.results).To(HaveLen(1))
-		Expect(results.results[0].Check.Name).To(Equal("fulfillment-grpc-server"))
+		Expect(results.results).To(HaveLen(2)) // the namespace itself + the Deployment
+		names := map[string]bool{}
+		for _, r := range results.results {
+			names[r.Check.Name] = true
+		}
+		Expect(names).To(HaveKey("fulfillment-grpc-server"))
+	})
+
+	It("also runs the prerequisite checks from Init, when given any", func() {
+		checks, err := install.DefaultChecks(install.CheckOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(checks).NotTo(BeEmpty())
+		clientsWithDynamic := &install.Clients{Typed: clients.Typed, Dynamic: emptyDynamicClient()}
+		withChecks := newWatchModel(context.Background(), clientsWithDynamic, "osac", checks, time.Second)
+
+		msg := withChecks.Init()()
+
+		results, ok := msg.(checkResultsMsg)
+		Expect(ok).To(BeTrue())
+		Expect(results.err).NotTo(HaveOccurred())
+		// namespace + Deployment + every "requiredFor: [all]" prerequisite,
+		// all failing since none of their cluster state was seeded.
+		Expect(len(results.results)).To(BeNumerically(">", 2))
 	})
 
 	It("stores results and schedules the next tick on checkResultsMsg", func() {

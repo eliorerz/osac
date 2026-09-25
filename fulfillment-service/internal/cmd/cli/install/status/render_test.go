@@ -28,6 +28,8 @@ var (
 	passingCheck  = install.Check{Name: "fulfillment-grpc-server", Severity: install.Required, Category: install.ServiceCategory}
 	warningCheck  = install.Check{Name: "osac-aap-bootstrap", Severity: install.Warning, Category: install.JobCategory}
 	requiredCheck = install.Check{Name: "osac-db-init", Severity: install.Required, Category: install.JobCategory}
+	resourceCheck = install.Check{Name: "default-storageclass", Severity: install.Warning, Category: install.ResourceCategory}
+	operatorCheck = install.Check{Name: "cert-manager-operator", Severity: install.Required, Category: install.OperatorCategory}
 )
 
 var _ = Describe("renderStatus", func() {
@@ -66,6 +68,19 @@ var _ = Describe("renderStatus", func() {
 	It("falls back to a default width when given 0 or a negative width", func() {
 		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 0) }).NotTo(Panic())
 		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, -5) }).NotTo(Panic())
+	})
+
+	It("excludes prerequisite results (Resources/Operators) from the progress bar's ready count", func() {
+		results := []install.Result{
+			{Check: passingCheck, Status: install.Pass},    // counts: pass
+			{Check: requiredCheck, Status: install.Pass},   // counts: pass
+			{Check: resourceCheck, Status: install.Failed}, // prerequisite -- doesn't count
+			{Check: operatorCheck, Status: install.Failed}, // prerequisite -- doesn't count
+		}
+
+		got := renderStatus(results, 80)
+
+		Expect(got).To(ContainSubstring("2/2 ready"))
 	})
 })
 
@@ -159,6 +174,21 @@ var _ = Describe("sections", func() {
 
 		Expect(got).To(ContainSubstring("SERVICES"))
 		Expect(got).NotTo(ContainSubstring("JOBS"))
+	})
+
+	It("groups prerequisite results under RESOURCES and OPERATORS, after the install-progress sections", func() {
+		results := []install.Result{
+			{Check: passingCheck, Status: install.Pass},
+			{Check: resourceCheck, Status: install.Failed},
+			{Check: operatorCheck, Status: install.Failed},
+		}
+
+		got := sections(results, 76)
+
+		Expect(got).To(ContainSubstring("RESOURCES"))
+		Expect(got).To(ContainSubstring("OPERATORS"))
+		Expect(strings.Index(got, "SERVICES")).To(BeNumerically("<", strings.Index(got, "RESOURCES")))
+		Expect(strings.Index(got, "RESOURCES")).To(BeNumerically("<", strings.Index(got, "OPERATORS")))
 	})
 })
 
