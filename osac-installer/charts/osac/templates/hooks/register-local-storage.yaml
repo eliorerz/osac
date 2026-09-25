@@ -9,7 +9,9 @@ metadata:
   annotations:
     "helm.sh/hook": post-install,post-upgrade
     "helm.sh/hook-weight": "31"
-    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+    # No hook-succeeded: a completed run stays visible in `oc get jobs`/
+    # `osac install status` instead of vanishing the moment it succeeds.
+    "helm.sh/hook-delete-policy": before-hook-creation
 spec:
   backoffLimit: 5
   # waitForFulfillment polls up to 60 × (30s curl + 10s sleep) = 2400s worst case.
