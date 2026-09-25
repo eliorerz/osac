@@ -20,15 +20,10 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/osac-project/osac/fulfillment-service/internal/cmd/cli/install/render"
-	"github.com/osac-project/osac/fulfillment-service/internal/cmd/cli/install/secretref"
 	"github.com/osac-project/osac/fulfillment-service/internal/exit"
 	"github.com/osac-project/osac/fulfillment-service/internal/terminal"
 	"github.com/osac-project/osac/osac-installer/pkg/install"
 )
-
-// defaultServices is every OSAC service: the default for --services, so a
-// bare `osac install status` reports on everything OSAC might need.
-var defaultServices = []string{"vmaas", "caas", "bmaas", "maas", "metering"}
 
 const defaultInterval = 5 * time.Second
 
@@ -43,7 +38,7 @@ func Cmd() *cobra.Command {
 // overwriting cmd.RunE on a command built by Cmd().
 func newCmd(runner *runnerContext) *cobra.Command {
 	result := &cobra.Command{
-		Use:                   "status [FLAG...]",
+		Use:                   "status --namespace NAMESPACE [FLAG...]",
 		Short:                 shortHelp,
 		Long:                  longHelp,
 		DisableFlagsInUseLine: true,
@@ -58,23 +53,12 @@ func newCmd(runner *runnerContext) *cobra.Command {
 		"",
 		kubeconfigFlagHelp,
 	)
-	flags.StringSliceVar(
-		&runner.args.services,
-		"services",
-		defaultServices,
-		servicesFlagHelp,
-	)
-	flags.BoolVar(
-		&runner.args.metal3,
-		"metal3",
-		false,
-		metal3FlagHelp,
-	)
-	flags.StringArrayVar(
-		&runner.args.requireSecrets,
-		"require-secret",
-		nil,
-		requireSecretFlagHelp,
+	flags.StringVarP(
+		&runner.args.namespace,
+		"namespace",
+		"n",
+		"",
+		namespaceFlagHelp,
 	)
 	flags.BoolVarP(
 		&runner.args.watch,
@@ -103,12 +87,10 @@ type runnerContext struct {
 	// terminal to drive.
 	runProgram func(tea.Model) error
 	args       struct {
-		kubeconfig     string
-		services       []string
-		metal3         bool
-		requireSecrets []string
-		watch          bool
-		interval       time.Duration
+		kubeconfig string
+		namespace  string
+		watch      bool
+		interval   time.Duration
 	}
 }
 
@@ -116,27 +98,23 @@ func (r *runnerContext) run(cmd *cobra.Command, _ []string) error {
 	ctx := cmd.Context()
 	console := terminal.ConsoleFromContext(ctx)
 
+	if r.args.namespace == "" {
+		console.Errorf(ctx, "--namespace is required: the namespace OSAC is (or will be) installed into.\n")
+		return exit.Error(1)
+	}
+
 	clients, err := r.loadClients(r.args.kubeconfig)
 	if err != nil {
 		console.Errorf(ctx, "Failed to connect to the Hub cluster: %v\n", err)
 		return exit.Error(1)
 	}
 
-	secretRefs, err := secretref.ParseAll(r.args.requireSecrets)
-	if err != nil {
-		console.Errorf(ctx, "Invalid --require-secret value: %v\n", err)
-		return exit.Error(1)
-	}
-
-	checks, err := install.DefaultChecks(install.CheckOptions{Services: r.args.services, Metal3: r.args.metal3})
-	if err != nil {
-		console.Errorf(ctx, "Failed to build the prerequisite checks: %v\n", err)
-		return exit.Error(1)
-	}
-	checks = append(checks, install.SecretChecks(secretRefs)...)
-
 	if !r.args.watch {
-		results := install.RunAll(ctx, clients, checks)
+		results, err := install.WorkloadChecks(ctx, clients, r.args.namespace)
+		if err != nil {
+			console.Errorf(ctx, "Failed to list OSAC's workloads: %v\n", err)
+			return exit.Error(1)
+		}
 		console.Infof(ctx, "%s", renderStatus(results, render.Width(console.Stdout())))
 		return nil
 	}
@@ -148,32 +126,36 @@ func (r *runnerContext) run(cmd *cobra.Command, _ []string) error {
 			return err
 		}
 	}
-	if err := runProgram(newWatchModel(ctx, clients, checks, r.args.interval)); err != nil {
+	if err := runProgram(newWatchModel(ctx, clients, r.args.namespace, r.args.interval)); err != nil {
 		console.Errorf(ctx, "Failed to display status: %v\n", err)
 		return exit.Error(1)
 	}
 	return nil
 }
 
-const shortHelp = `Show a live dashboard of the Hub cluster's readiness to install OSAC`
+const shortHelp = `Show a live dashboard of the installed OSAC deployment's health`
 
 const longHelp = `
-Runs OSAC's prerequisite checks against the target Hub cluster and shows a
-progress bar and per-check status, fitted to the terminal.
+Lists every Deployment, StatefulSet, DaemonSet, and Job the osac Helm chart
+installed into {{ bt }}--namespace{{ bt }} and shows a progress bar and
+per-workload status, fitted to the terminal -- the actual OSAC services and
+one-shot configuration jobs (like the AAP bootstrap job), not the
+prerequisites a Hub cluster needs before installing. Use
+{{ bt }}osac install discover{{ bt }}/{{ bt }}validate{{ bt }} for prerequisite
+checks instead.
 
-With {{ bt }}--watch{{ bt }}/{{ bt }}-w{{ bt }}, checks re-run on an interval and the
+What's running is discovered from the cluster, not a fixed list: only the
+services this particular install actually enabled (vmaas/caas/bmaas/maas,
+the web console, metering, the bundled secret store, ...) show up.
+
+With {{ bt }}--watch{{ bt }}/{{ bt }}-w{{ bt }}, this re-lists on an interval and the
 view redraws in place instead of printing once and exiting -- press
 {{ bt }}q{{ bt }} to quit. Without it, this runs once and exits, the same as a
 single frame of the watch view.
 
-Unlike {{ bt }}osac install validate{{ bt }}, this command never fails on a failed
-check and doesn't produce scriptable output; use {{ bt }}osac install discover{{ bt }}
-or {{ bt }}validate{{ bt }} (with {{ bt }}--json{{ bt }}) for that.
-
 Requires kubectl/oc-level access to the target Hub cluster: a working
-kubeconfig with permission to read CustomResourceDefinitions,
-ClusterServiceVersions, ClusterVersion, StorageClasses, Secrets, and, with
-{{ bt }}--metal3{{ bt }}, Metal3's Provisioning resource. This is different from
+kubeconfig with permission to read Deployments, StatefulSets, DaemonSets,
+and Jobs in {{ bt }}--namespace{{ bt }}. This is different from
 {{ bt }}osac login{{ bt }}, which authenticates against the fulfillment-service API,
 not the Hub cluster's Kubernetes API.
 `
@@ -184,32 +166,17 @@ _PATH_ - Path to the kubeconfig file to use. Defaults to the
 using the current context — the same resolution {{ bt }}oc{{ bt }}/{{ bt }}kubectl{{ bt }} use.
 `
 
-const servicesFlagHelp = `
-_[SERVICE...]{{ bt }},{{ bt }}...{{ bt }}]_ - Which OSAC services to check
-prerequisites for: {{ bt }}vmaas{{ bt }}, {{ bt }}caas{{ bt }}, {{ bt }}bmaas{{ bt }},
-{{ bt }}maas{{ bt }}, {{ bt }}metering{{ bt }}. Defaults to every service.
-`
-
-const metal3FlagHelp = `
-_[BOOLEAN]_ - Also check Metal3 bare-metal prerequisites: the BareMetalHost
-CRD and the Provisioning CR's {{ bt }}watchAllNamespaces{{ bt }} setting. Enable
-this if you plan to install OSAC with the Metal3 backend.
-`
-
-const requireSecretFlagHelp = `
-_NAMESPACE/NAME[:KEY,...]_ - Also check that the named Secret exists (and,
-if given, that it has every listed key). Repeatable. Use this to check
-Secrets your own {{ bt }}my-values.yaml{{ bt }} references, such as the AAP
-license manifest or a database connection Secret — their names aren't fixed
-by OSAC, so they aren't included by default.
+const namespaceFlagHelp = `
+_NAMESPACE_ - The namespace OSAC is (or will be) installed into, e.g. the
+namespace you pass to {{ bt }}helm install osac ... -n <namespace>{{ bt }}. Required.
 `
 
 const watchFlagHelp = `
-_[BOOLEAN]_ - Re-run checks on an interval and redraw the view in place
+_[BOOLEAN]_ - Re-list workloads on an interval and redraw the view in place
 instead of printing once and exiting. Press {{ bt }}q{{ bt }} to quit.
 `
 
 const intervalFlagHelp = `
-_DURATION_ - How often to re-run checks in {{ bt }}--watch{{ bt }} mode, e.g.
+_DURATION_ - How often to re-list workloads in {{ bt }}--watch{{ bt }} mode, e.g.
 {{ bt }}10s{{ bt }}, {{ bt }}1m{{ bt }}. Ignored without {{ bt }}--watch{{ bt }}.
 `

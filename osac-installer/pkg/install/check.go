@@ -63,17 +63,24 @@ func (s Status) String() string {
 }
 
 // Category groups a Check for display purposes (e.g. `osac install
-// status`'s Resources/Operators sections). It has no effect on which
-// checks run or how they gate `osac install validate`.
+// discover`/`validate`'s Resources/Operators grouping, `osac install
+// status`'s Services/Jobs grouping). It has no effect on which checks run
+// or how they gate `osac install validate`.
 type Category int
 
 const (
 	// ResourceCategory is a CRD, StorageClass, cluster version, or other
-	// non-Operator resource.
+	// non-Operator prerequisite resource.
 	ResourceCategory Category = iota
-	// OperatorCategory is an OLM-managed Operator, checked via its
-	// ClusterServiceVersion.
+	// OperatorCategory is an OLM-managed Operator prerequisite, checked via
+	// its ClusterServiceVersion.
 	OperatorCategory
+	// ServiceCategory is a long-running OSAC workload the osac Helm chart
+	// installs (a Deployment, StatefulSet, or DaemonSet).
+	ServiceCategory
+	// JobCategory is a one-shot OSAC configuration Job the osac Helm chart
+	// runs (e.g. the AAP bootstrap job, db-init).
+	JobCategory
 )
 
 // String implements fmt.Stringer.
@@ -83,6 +90,10 @@ func (c Category) String() string {
 		return "resource"
 	case OperatorCategory:
 		return "operator"
+	case ServiceCategory:
+		return "service"
+	case JobCategory:
+		return "job"
 	default:
 		return "unknown"
 	}

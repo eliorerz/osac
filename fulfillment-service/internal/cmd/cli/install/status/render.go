@@ -59,22 +59,13 @@ const (
 
 // renderStatus renders results as a framed dashboard: a small "OSAC" banner,
 // a progress bar (passed/total), and one Resources/Operators section per
-// install.Category, fitted to width. Pure and stateless -- given the same
-// results and width, it always renders the same string -- so it's testable
-// without a real terminal or tea.Program, and reusable by both the one-shot
-// render path and the watch-mode tea.Model's View.
+// install.Category (ServiceCategory/JobCategory), fitted to width. Pure and
+// stateless -- given the same results and width, it always renders the
+// same string -- so it's testable without a real terminal or tea.Program,
+// and reusable by both the one-shot render path and the watch-mode
+// tea.Model's View.
 func renderStatus(results []install.Result, width int) string {
-	if width <= 0 {
-		width = defaultWidth
-	}
-	frameWidth := width
-	if frameWidth > frameMaxWidth {
-		frameWidth = frameMaxWidth
-	}
-	if frameWidth < frameMinWidth {
-		frameWidth = frameMinWidth
-	}
-	contentWidth := frameWidth - frameOverhead
+	frameWidth, contentWidth := frameDimensions(width)
 
 	var b strings.Builder
 	b.WriteString(banner())
@@ -82,31 +73,66 @@ func renderStatus(results []install.Result, width int) string {
 	b.WriteString("\n\n")
 	b.WriteString(sections(results, contentWidth))
 
-	// Every line written above (banner rows, the progress bar, each
-	// statusLine) is already sized to fit within contentWidth, so the frame
-	// renders them as-is rather than re-truncating already-ANSI-styled
-	// multi-line content here too -- safer than trusting a second
-	// width-clamping pass to handle escape codes correctly across lines.
-	content := strings.TrimRight(b.String(), "\n")
-	frame := lipgloss.NewStyle().
+	return frame(strings.TrimRight(b.String(), "\n"), frameWidth)
+}
+
+// renderError renders err inside the same framed banner as renderStatus,
+// so a failed workload listing (a bad --namespace, RBAC denied) still gets
+// a clear, boxed message instead of a blank or stale dashboard.
+func renderError(err error, width int) string {
+	frameWidth, contentWidth := frameDimensions(width)
+
+	errorStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorRed))
+	message := lipgloss.NewStyle().MaxWidth(contentWidth).Render(fmt.Sprintf("Error: %v", err))
+
+	var b strings.Builder
+	b.WriteString(banner())
+	b.WriteString(errorStyle.Render(message))
+
+	return frame(b.String(), frameWidth)
+}
+
+// frameDimensions clamps width to [frameMinWidth, frameMaxWidth] (falling
+// back to defaultWidth when width is unknown) and returns both the outer
+// frame width and the usable content width inside its border and padding.
+func frameDimensions(width int) (frameWidth, contentWidth int) {
+	if width <= 0 {
+		width = defaultWidth
+	}
+	frameWidth = width
+	if frameWidth > frameMaxWidth {
+		frameWidth = frameMaxWidth
+	}
+	if frameWidth < frameMinWidth {
+		frameWidth = frameMinWidth
+	}
+	return frameWidth, frameWidth - frameOverhead
+}
+
+// frame wraps content (every line of which the caller must have already
+// sized to fit within frameWidth-frameOverhead) in a colored rounded
+// border. Content isn't re-truncated here: a second width-clamping pass
+// over already-ANSI-styled multi-line text risks cutting escape codes
+// mid-sequence, so callers size their own lines instead.
+func frame(content string, frameWidth int) string {
+	style := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(lipgloss.Color(colorBorder)).
 		Padding(0, 1).
 		Width(frameWidth)
-	return frame.Render(content)
+	return style.Render(content)
 }
 
-// sections groups results into Resources/Operators (install.Category),
-// rendering only the sections that actually have entries -- a --services
-// selection that never includes any Operator-category check (e.g. no
-// services requested at all) shouldn't print an empty "OPERATORS" heading.
+// sections groups results into Services/Jobs (install.Category), rendering
+// only the sections that actually have entries -- a namespace with no
+// Jobs currently running shouldn't print an empty "JOBS" heading.
 func sections(results []install.Result, width int) string {
 	if len(results) == 0 {
-		return "No checks to run.\n"
+		return "No OSAC workloads found in this namespace.\n"
 	}
 	var b strings.Builder
-	writeSection(&b, "RESOURCES", filterCategory(results, install.ResourceCategory), width)
-	writeSection(&b, "OPERATORS", filterCategory(results, install.OperatorCategory), width)
+	writeSection(&b, "SERVICES", filterCategory(results, install.ServiceCategory), width)
+	writeSection(&b, "JOBS", filterCategory(results, install.JobCategory), width)
 	return b.String()
 }
 

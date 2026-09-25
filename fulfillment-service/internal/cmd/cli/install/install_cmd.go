@@ -42,14 +42,16 @@ const shortHelp = `Manage Hub cluster installation and lifecycle operations`
 
 const longHelp = `
 Installation and lifecycle operations for the Hub cluster OSAC is deployed
-onto: checking a cluster's readiness before installing today, with more
-lifecycle operations (log collection, upgrade assistance) planned.
+onto: checking a cluster's readiness before installing, watching an install's
+progress, with more lifecycle operations (log collection, upgrade assistance)
+planned.
 
 Unlike the rest of this CLI, these commands are Kubernetes administration
 tools: they require kubectl/oc-level cluster access, not an
 {{ bt }}osac login{{ bt }} session, and assume familiarity with Kubernetes. They
 exist for whoever sets up or operates a Hub cluster — a cluster admin or
-SRE — and some of them, like {{ bt }}discover{{ bt }}, {{ bt }}status{{ bt }}, and
-{{ bt }}validate{{ bt }}, run before OSAC, and therefore before
-fulfillment-service, exists on that cluster.
+SRE. {{ bt }}discover{{ bt }} and {{ bt }}validate{{ bt }} run before OSAC, and
+therefore before fulfillment-service, exists on that cluster;
+{{ bt }}status{{ bt }} runs during and after {{ bt }}helm install{{ bt }}, watching the
+services and jobs that install actually creates.
 `

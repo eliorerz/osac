@@ -14,6 +14,7 @@ language governing permissions and limitations under the License.
 package status
 
 import (
+	"errors"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -24,16 +25,16 @@ import (
 )
 
 var (
-	passingCheck  = install.Check{Name: "cert-manager-crds", Severity: install.Required, Category: install.ResourceCategory}
-	warningCheck  = install.Check{Name: "default-storageclass", Severity: install.Warning, Category: install.ResourceCategory}
-	requiredCheck = install.Check{Name: "aap-operator", Severity: install.Required, Category: install.OperatorCategory}
+	passingCheck  = install.Check{Name: "fulfillment-grpc-server", Severity: install.Required, Category: install.ServiceCategory}
+	warningCheck  = install.Check{Name: "osac-aap-bootstrap", Severity: install.Warning, Category: install.JobCategory}
+	requiredCheck = install.Check{Name: "osac-db-init", Severity: install.Required, Category: install.JobCategory}
 )
 
 var _ = Describe("renderStatus", func() {
 	It("includes the passed/total count", func() {
 		results := []install.Result{
-			{Check: passingCheck, Status: install.Pass, Message: "CRD found"},
-			{Check: requiredCheck, Status: install.Failed, Message: "not installed"},
+			{Check: passingCheck, Status: install.Pass, Message: "1/1 replicas ready"},
+			{Check: requiredCheck, Status: install.Failed, Message: "failed"},
 		}
 
 		got := renderStatus(results, 80)
@@ -43,28 +44,37 @@ var _ = Describe("renderStatus", func() {
 
 	It("includes every check's name and message", func() {
 		results := []install.Result{
-			{Check: passingCheck, Status: install.Pass, Message: "CRD found"},
-			{Check: warningCheck, Status: install.Failed, Message: "no default StorageClass found"},
+			{Check: passingCheck, Status: install.Pass, Message: "1/1 replicas ready"},
+			{Check: warningCheck, Status: install.Failed, Message: "in progress"},
 		}
 
 		got := renderStatus(results, 80)
 
-		Expect(got).To(ContainSubstring("cert-manager-crds"))
-		Expect(got).To(ContainSubstring("CRD found"))
-		Expect(got).To(ContainSubstring("default-storageclass"))
-		Expect(got).To(ContainSubstring("no default StorageClass found"))
+		Expect(got).To(ContainSubstring("fulfillment-grpc-server"))
+		Expect(got).To(ContainSubstring("1/1 replicas ready"))
+		Expect(got).To(ContainSubstring("osac-aap-bootstrap"))
+		Expect(got).To(ContainSubstring("in progress"))
 	})
 
 	It("handles zero results without panicking", func() {
 		got := renderStatus(nil, 80)
 
 		Expect(got).To(ContainSubstring("0/0 ready"))
-		Expect(got).To(ContainSubstring("No checks to run"))
+		Expect(got).To(ContainSubstring("No OSAC workloads found"))
 	})
 
 	It("falls back to a default width when given 0 or a negative width", func() {
 		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, 0) }).NotTo(Panic())
 		Expect(func() { renderStatus([]install.Result{{Check: passingCheck, Status: install.Pass}}, -5) }).NotTo(Panic())
+	})
+})
+
+var _ = Describe("renderError", func() {
+	It("shows the error message inside the same framed banner", func() {
+		got := renderError(errors.New("namespaces \"osac\" not found"), 80)
+
+		Expect(got).To(ContainSubstring("namespaces \"osac\" not found"))
+		Expect(got).To(ContainSubstring("╭")) // still framed
 	})
 })
 
@@ -129,7 +139,7 @@ var _ = Describe("progressColor", func() {
 })
 
 var _ = Describe("sections", func() {
-	It("groups results under RESOURCES and OPERATORS headers, resources first", func() {
+	It("groups results under SERVICES and JOBS headers, services first", func() {
 		results := []install.Result{
 			{Check: passingCheck, Status: install.Pass},
 			{Check: requiredCheck, Status: install.Failed},
@@ -137,9 +147,9 @@ var _ = Describe("sections", func() {
 
 		got := sections(results, 76)
 
-		Expect(got).To(ContainSubstring("RESOURCES"))
-		Expect(got).To(ContainSubstring("OPERATORS"))
-		Expect(strings.Index(got, "RESOURCES")).To(BeNumerically("<", strings.Index(got, "OPERATORS")))
+		Expect(got).To(ContainSubstring("SERVICES"))
+		Expect(got).To(ContainSubstring("JOBS"))
+		Expect(strings.Index(got, "SERVICES")).To(BeNumerically("<", strings.Index(got, "JOBS")))
 	})
 
 	It("omits a section header when no result belongs to that category", func() {
@@ -147,8 +157,8 @@ var _ = Describe("sections", func() {
 
 		got := sections(results, 76)
 
-		Expect(got).To(ContainSubstring("RESOURCES"))
-		Expect(got).NotTo(ContainSubstring("OPERATORS"))
+		Expect(got).To(ContainSubstring("SERVICES"))
+		Expect(got).NotTo(ContainSubstring("JOBS"))
 	})
 })
 

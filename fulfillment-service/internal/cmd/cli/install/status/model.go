@@ -22,44 +22,50 @@ import (
 	"github.com/osac-project/osac/osac-installer/pkg/install"
 )
 
-// checkResultsMsg carries a fresh check run's results into Update.
+// checkResultsMsg carries a fresh workload listing into Update. err is set
+// when the List call itself failed (e.g. the namespace doesn't exist, or
+// RBAC denies it) -- a different failure mode from any individual
+// workload's own Result, which always carries a Status/Message and never
+// an error.
 type checkResultsMsg struct {
 	results []install.Result
+	err     error
 }
 
-// tickMsg triggers the next check run in watch mode.
+// tickMsg triggers the next workload listing in watch mode.
 type tickMsg time.Time
 
 // watchModel is the tea.Model driving `osac install status --watch`: it
-// re-runs the same checks discover/validate use on an interval and
-// redraws in place, fitted to the terminal's current size (tracked via
-// tea.WindowSizeMsg).
+// re-lists namespace's workloads on an interval and redraws in place,
+// fitted to the terminal's current size (tracked via tea.WindowSizeMsg).
 type watchModel struct {
-	ctx      context.Context //nolint:containedctx // bubbletea's Update/Init have no context parameter to thread this through otherwise.
-	clients  *install.Clients
-	checks   []install.Check
-	interval time.Duration
+	ctx       context.Context //nolint:containedctx // bubbletea's Update/Init have no context parameter to thread this through otherwise.
+	clients   *install.Clients
+	namespace string
+	interval  time.Duration
 
 	results []install.Result
+	err     error
 	width   int
 }
 
-func newWatchModel(ctx context.Context, clients *install.Clients, checks []install.Check, interval time.Duration) watchModel {
+func newWatchModel(ctx context.Context, clients *install.Clients, namespace string, interval time.Duration) watchModel {
 	return watchModel{
-		ctx:      ctx,
-		clients:  clients,
-		checks:   checks,
-		interval: interval,
+		ctx:       ctx,
+		clients:   clients,
+		namespace: namespace,
+		interval:  interval,
 	}
 }
 
 func (m watchModel) Init() tea.Cmd {
-	return runChecks(m.ctx, m.clients, m.checks)
+	return listWorkloads(m.ctx, m.clients, m.namespace)
 }
 
-func runChecks(ctx context.Context, clients *install.Clients, checks []install.Check) tea.Cmd {
+func listWorkloads(ctx context.Context, clients *install.Clients, namespace string) tea.Cmd {
 	return func() tea.Msg {
-		return checkResultsMsg{results: install.RunAll(ctx, clients, checks)}
+		results, err := install.WorkloadChecks(ctx, clients, namespace)
+		return checkResultsMsg{results: results, err: err}
 	}
 }
 
@@ -80,15 +86,20 @@ func (m watchModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case checkResultsMsg:
 		m.results = msg.results
+		m.err = msg.err
 		return m, tick(m.interval)
 	case tickMsg:
-		return m, runChecks(m.ctx, m.clients, m.checks)
+		return m, listWorkloads(m.ctx, m.clients, m.namespace)
 	}
 	return m, nil
 }
 
 func (m watchModel) View() tea.View {
-	v := tea.NewView(renderStatus(m.results, m.width) + "\n(press q to quit)")
+	body := renderStatus(m.results, m.width)
+	if m.err != nil {
+		body = renderError(m.err, m.width)
+	}
+	v := tea.NewView(body + "\n(press q to quit)")
 	v.AltScreen = true
 	return v
 }

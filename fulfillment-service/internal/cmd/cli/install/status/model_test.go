@@ -15,30 +15,45 @@ package status
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
 	. "github.com/onsi/gomega"
+	appsv1 "k8s.io/api/apps/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/osac-project/osac/osac-installer/pkg/install"
 )
 
 var _ = Describe("watchModel", func() {
-	var m watchModel
+	var (
+		m       watchModel
+		clients *install.Clients
+	)
 
 	BeforeEach(func() {
-		m = newWatchModel(context.Background(), nil, nil, time.Second)
+		clients = &install.Clients{Typed: fake.NewSimpleClientset(
+			&appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{Name: "fulfillment-grpc-server", Namespace: "osac"},
+				Status:     appsv1.DeploymentStatus{ReadyReplicas: 1},
+			},
+		)}
+		m = newWatchModel(context.Background(), clients, "osac", time.Second)
 	})
 
-	It("kicks off a check run from Init", func() {
+	It("kicks off a workload listing from Init", func() {
 		cmd := m.Init()
 		Expect(cmd).NotTo(BeNil())
 
 		msg := cmd()
 		results, ok := msg.(checkResultsMsg)
 		Expect(ok).To(BeTrue())
-		Expect(results.results).To(BeEmpty()) // nil checks -> RunAll returns no results
+		Expect(results.err).NotTo(HaveOccurred())
+		Expect(results.results).To(HaveLen(1))
+		Expect(results.results[0].Check.Name).To(Equal("fulfillment-grpc-server"))
 	})
 
 	It("stores results and schedules the next tick on checkResultsMsg", func() {
@@ -48,10 +63,19 @@ var _ = Describe("watchModel", func() {
 
 		updated := next.(watchModel)
 		Expect(updated.results).To(Equal(results))
+		Expect(updated.err).NotTo(HaveOccurred())
 		Expect(cmd).NotTo(BeNil()) // schedules the next tick
 	})
 
-	It("re-runs checks on tickMsg", func() {
+	It("stores a listing error separately from results, still schedules the next tick", func() {
+		next, cmd := m.Update(checkResultsMsg{err: errors.New("namespace not found")})
+
+		updated := next.(watchModel)
+		Expect(updated.err).To(HaveOccurred())
+		Expect(cmd).NotTo(BeNil())
+	})
+
+	It("re-lists workloads on tickMsg", func() {
 		_, cmd := m.Update(tickMsg(time.Now()))
 
 		Expect(cmd).NotTo(BeNil())
@@ -77,13 +101,22 @@ var _ = Describe("watchModel", func() {
 		Expect(cmd).To(BeNil())
 	})
 
-	It("renders a bordered-free status view with AltScreen enabled", func() {
+	It("renders the status view with AltScreen enabled", func() {
 		m.results = []install.Result{{Check: passingCheck, Status: install.Pass, Message: "ok"}}
 
 		v := m.View()
 
 		Expect(v.AltScreen).To(BeTrue())
-		Expect(v.Content).To(ContainSubstring("cert-manager-crds"))
+		Expect(v.Content).To(ContainSubstring("fulfillment-grpc-server"))
 		Expect(v.Content).To(ContainSubstring("press q to quit"))
+	})
+
+	It("renders the error view instead of a stale dashboard when the last listing failed", func() {
+		m.err = errors.New("namespace not found")
+
+		v := m.View()
+
+		Expect(v.AltScreen).To(BeTrue())
+		Expect(v.Content).To(ContainSubstring("namespace not found"))
 	})
 })
