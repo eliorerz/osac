@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -148,6 +149,54 @@ func decodeHelmRelease(data []byte) (*helmRelease, error) {
 type expectedWorkload struct {
 	Kind string
 	Name string
+	// HookPhase and HookWeight capture where this item sits in Helm's own
+	// install/upgrade sequencing -- see hookPhase and parseHookMetadata.
+	// Zero-valued (hookPhaseNone, 0) for a plain (non-hook) resource.
+	HookPhase  hookPhase
+	HookWeight int
+}
+
+// hookPhase orders an expectedWorkload the way Helm itself actually
+// executes a release: every pre-install/pre-upgrade hook runs (by weight)
+// before any plain resource is created; every plain resource is then
+// created (or updated) together; every post-install/post-upgrade hook then
+// runs (by weight) after that. Helm aborts the whole rollout the instant
+// one hook in a phase fails, so nothing later in this ordering will ever be
+// created until the install is retried -- see applyHookBlocking in
+// workload.go, the only place this ordering is used.
+type hookPhase int
+
+// Explicit values (not iota) so hookPhaseNone -- a plain resource with no
+// hook annotation -- stays hookPhase's zero value (what an expectedWorkload
+// literal gets by default, including in existing tests that only set
+// Kind/Name) while still sorting correctly relative to the hooks: Helm runs
+// pre-install/pre-upgrade hooks first, then creates every plain resource
+// together, then runs post-install/post-upgrade hooks.
+const (
+	hookPhasePre  hookPhase = -1
+	hookPhaseNone hookPhase = 0
+	hookPhasePost hookPhase = 1
+)
+
+// parseHookMetadata classifies a manifest document's helm.sh/hook and
+// helm.sh/hook-weight annotations into this package's simplified
+// pre/plain/post ordering. A hook can be tagged for more than one event
+// (e.g. "pre-install,pre-upgrade", "post-install,post-upgrade" -- every
+// hook Job in the osac chart uses one of these two pairs) -- Contains,
+// rather than an exact match, so either half of such a pair is recognized.
+// A missing or unparseable hook-weight defaults to 0, matching Helm's own
+// documented default.
+func parseHookMetadata(annotations map[string]string) (hookPhase, int) {
+	hook := annotations["helm.sh/hook"]
+	weight, _ := strconv.Atoi(annotations["helm.sh/hook-weight"])
+	switch {
+	case strings.Contains(hook, "pre-install"), strings.Contains(hook, "pre-upgrade"):
+		return hookPhasePre, weight
+	case strings.Contains(hook, "post-install"), strings.Contains(hook, "post-upgrade"):
+		return hookPhasePost, weight
+	default:
+		return hookPhaseNone, 0
+	}
 }
 
 // expectedWorkloadKinds are the resource kinds WorkloadChecks reports on;
@@ -181,7 +230,8 @@ func expectedWorkloads(release *helmRelease) ([]expectedWorkload, error) {
 			var doc struct {
 				Kind     string `json:"kind"`
 				Metadata struct {
-					Name string `json:"name"`
+					Name        string            `json:"name"`
+					Annotations map[string]string `json:"annotations"`
 				} `json:"metadata"`
 			}
 			err := decoder.Decode(&doc)
@@ -194,7 +244,8 @@ func expectedWorkloads(release *helmRelease) ([]expectedWorkload, error) {
 			if !expectedWorkloadKinds[doc.Kind] || doc.Metadata.Name == "" {
 				continue
 			}
-			item := expectedWorkload{Kind: doc.Kind, Name: doc.Metadata.Name}
+			phase, weight := parseHookMetadata(doc.Metadata.Annotations)
+			item := expectedWorkload{Kind: doc.Kind, Name: doc.Metadata.Name, HookPhase: phase, HookWeight: weight}
 			if seen[item] {
 				continue
 			}

@@ -16,6 +16,7 @@ package install
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
@@ -109,36 +110,87 @@ func WorkloadChecks(ctx context.Context, clients *Clients, namespace string) ([]
 	daemonSetsByName := indexDaemonSets(daemonSets.Items)
 	jobsByName := indexJobs(jobs.Items)
 
-	for _, item := range expected {
+	expectedResults := make([]Result, len(expected))
+	for i, item := range expected {
 		switch item.Kind {
 		case "Deployment":
 			if d, ok := deploymentsByName[item.Name]; ok {
-				results = append(results, deploymentResult(d))
+				expectedResults[i] = deploymentResult(d)
 			} else {
-				results = append(results, notYetCreatedResult(item.Name, "Deployment", ServiceCategory))
+				expectedResults[i] = notYetCreatedResult(item.Name, "Deployment", ServiceCategory)
 			}
 		case "StatefulSet":
 			if s, ok := statefulSetsByName[item.Name]; ok {
-				results = append(results, statefulSetResult(s))
+				expectedResults[i] = statefulSetResult(s)
 			} else {
-				results = append(results, notYetCreatedResult(item.Name, "StatefulSet", ServiceCategory))
+				expectedResults[i] = notYetCreatedResult(item.Name, "StatefulSet", ServiceCategory)
 			}
 		case "DaemonSet":
 			if ds, ok := daemonSetsByName[item.Name]; ok {
-				results = append(results, daemonSetResult(ds))
+				expectedResults[i] = daemonSetResult(ds)
 			} else {
-				results = append(results, notYetCreatedResult(item.Name, "DaemonSet", ServiceCategory))
+				expectedResults[i] = notYetCreatedResult(item.Name, "DaemonSet", ServiceCategory)
 			}
 		case "Job":
 			if j, ok := jobsByName[item.Name]; ok {
-				results = append(results, jobResult(j))
+				expectedResults[i] = jobResult(j)
 			} else {
-				results = append(results, notYetCreatedResult(item.Name, "Job", JobCategory))
+				expectedResults[i] = notYetCreatedResult(item.Name, "Job", JobCategory)
 			}
 		}
 	}
+	applyHookBlocking(expected, expectedResults)
+	results = append(results, expectedResults...)
 
 	return results, nil
+}
+
+// applyHookBlocking rewrites any still-"not created yet" result in
+// expectedResults (index-aligned with expected) to Blocked once an earlier
+// item -- in Helm's own pre-hooks/plain-resources/post-hooks execution
+// order, see hookPhase -- has genuinely Failed: Helm aborts the release the
+// moment one hook fails, so nothing later in that sequence will be created
+// until the install is retried. Without this, those items would otherwise
+// sit at Progressing/"not created yet" forever, indistinguishable from
+// something that just hasn't had its turn yet, and would count against the
+// progress bar's percentage as if they might still complete on their own
+// (confirmed live: a failed post-install hook left several genuinely stuck
+// Jobs reporting the same "not created yet" as ones that were actually
+// about to run, and counting them made 5/8 read as "60% ready" when 5 of
+// the remaining 3 could never complete without a retry).
+//
+// Only Jobs can ever be genuinely Failed in this package's model (see
+// jobResult) -- Deployments/StatefulSets/DaemonSets only ever report
+// Pass/Progressing, since a rollout has no equivalent "gave up" signal --
+// so only a failed hook Job can ever start blocking anything here, but the
+// blocking effect can reach any kind of item later in the same sequence
+// (e.g. a pre-install hook failing blocks the chart's plain Deployments
+// too, since Helm never gets to create them at all).
+func applyHookBlocking(expected []expectedWorkload, expectedResults []Result) {
+	order := make([]int, len(expected))
+	for i := range expected {
+		order[i] = i
+	}
+	sort.SliceStable(order, func(a, b int) bool {
+		i, j := order[a], order[b]
+		if expected[i].HookPhase != expected[j].HookPhase {
+			return expected[i].HookPhase < expected[j].HookPhase
+		}
+		return expected[i].HookWeight < expected[j].HookWeight
+	})
+
+	blockedBy := ""
+	for _, i := range order {
+		result := &expectedResults[i]
+		if blockedBy != "" && result.Status == Progressing && result.Message == "not created yet" {
+			result.Status = Blocked
+			result.Message = fmt.Sprintf("blocked (%q failed)", blockedBy)
+			continue
+		}
+		if result.Status == Failed {
+			blockedBy = result.Check.Name
+		}
+	}
 }
 
 // notYetCreatedResult reports a workload the Helm release's manifest

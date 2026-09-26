@@ -323,6 +323,121 @@ var _ = Describe("WorkloadChecks", func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(byName(results)).To(HaveKey("fulfillment-grpc-server"))
 		})
+
+		Describe("hook-based blocking (Helm aborts the rest of a phase the moment one hook fails)", func() {
+			It("marks a not-yet-created Job behind a failed, earlier-weighted hook in the same phase as Blocked", func() {
+				releaseSecret := newHelmReleaseSecret("osac", "osac", 1, "",
+					"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: osac-aap-bootstrap\n"+
+						"  annotations:\n    helm.sh/hook: post-install,post-upgrade\n    helm.sh/hook-weight: \"10\"\n",
+					"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: osac-aap-create-token\n"+
+						"  annotations:\n    helm.sh/hook: post-install,post-upgrade\n    helm.sh/hook-weight: \"20\"\n",
+				)
+				clients := newFakeClients([]runtime.Object{
+					namespaceObj("osac"),
+					releaseSecret,
+					&batchv1.Job{
+						ObjectMeta: metav1.ObjectMeta{Name: "osac-aap-bootstrap", Namespace: "osac"},
+						Status: batchv1.JobStatus{
+							Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}},
+						},
+					},
+				}, nil)
+
+				results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+				Expect(err).NotTo(HaveOccurred())
+				names := byName(results)
+				Expect(names["osac-aap-bootstrap"].Status).To(Equal(Failed))
+				blocked := names["osac-aap-create-token"]
+				Expect(blocked.Status).To(Equal(Blocked))
+				Expect(blocked.Message).To(ContainSubstring("osac-aap-bootstrap"))
+			})
+
+			It("does not block an earlier-weighted item behind a later one that failed", func() {
+				releaseSecret := newHelmReleaseSecret("osac", "osac", 1, "",
+					"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: earlier-step\n"+
+						"  annotations:\n    helm.sh/hook: post-install\n    helm.sh/hook-weight: \"10\"\n",
+					"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: later-step-that-fails\n"+
+						"  annotations:\n    helm.sh/hook: post-install\n    helm.sh/hook-weight: \"20\"\n",
+				)
+				clients := newFakeClients([]runtime.Object{
+					namespaceObj("osac"),
+					releaseSecret,
+					&batchv1.Job{
+						ObjectMeta: metav1.ObjectMeta{Name: "later-step-that-fails", Namespace: "osac"},
+						Status: batchv1.JobStatus{
+							Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}},
+						},
+					},
+				}, nil)
+
+				results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+				Expect(err).NotTo(HaveOccurred())
+				earlier := byName(results)["earlier-step"]
+				Expect(earlier.Status).To(Equal(Progressing))
+				Expect(earlier.Message).To(Equal("not created yet"))
+			})
+
+			It("blocks a plain (non-hook) resource behind a failed pre-install hook", func() {
+				releaseSecret := newHelmReleaseSecret("osac", "osac",
+					1, "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: fulfillment-grpc-server\n",
+					"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: osac-pre-install-validate\n"+
+						"  annotations:\n    helm.sh/hook: pre-install,pre-upgrade\n",
+				)
+				clients := newFakeClients([]runtime.Object{
+					namespaceObj("osac"),
+					releaseSecret,
+					&batchv1.Job{
+						ObjectMeta: metav1.ObjectMeta{Name: "osac-pre-install-validate", Namespace: "osac"},
+						Status: batchv1.JobStatus{
+							Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}},
+						},
+					},
+				}, nil)
+
+				results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+				Expect(err).NotTo(HaveOccurred())
+				blocked := byName(results)["fulfillment-grpc-server"]
+				Expect(blocked.Status).To(Equal(Blocked))
+				Expect(blocked.Message).To(ContainSubstring("osac-pre-install-validate"))
+			})
+
+			It("leaves an item alone when it's already Progressing for its own reason (e.g. actively retrying)", func() {
+				releaseSecret := newHelmReleaseSecret("osac", "osac", 1, "",
+					"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: earlier-failed\n"+
+						"  annotations:\n    helm.sh/hook: post-install\n    helm.sh/hook-weight: \"10\"\n",
+					"apiVersion: batch/v1\nkind: Job\nmetadata:\n  name: later-retrying\n"+
+						"  annotations:\n    helm.sh/hook: post-install\n    helm.sh/hook-weight: \"20\"\n",
+				)
+				clients := newFakeClients([]runtime.Object{
+					namespaceObj("osac"),
+					releaseSecret,
+					&batchv1.Job{
+						ObjectMeta: metav1.ObjectMeta{Name: "earlier-failed", Namespace: "osac"},
+						Status: batchv1.JobStatus{
+							Conditions: []batchv1.JobCondition{{Type: batchv1.JobFailed, Status: corev1.ConditionTrue}},
+						},
+					},
+					// later-retrying already exists and is actively retrying --
+					// it can't be "not created yet" (it's been created), so
+					// blocking never applies to it regardless of what failed
+					// ahead of it.
+					&batchv1.Job{
+						ObjectMeta: metav1.ObjectMeta{Name: "later-retrying", Namespace: "osac"},
+						Status:     batchv1.JobStatus{Failed: 1},
+					},
+				}, nil)
+
+				results, err := WorkloadChecks(context.Background(), clients, "osac")
+
+				Expect(err).NotTo(HaveOccurred())
+				retrying := byName(results)["later-retrying"]
+				Expect(retrying.Status).To(Equal(Progressing))
+				Expect(retrying.Message).To(ContainSubstring("retrying"))
+			})
+		})
 	})
 })
 

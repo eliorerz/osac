@@ -236,6 +236,22 @@ var _ = Describe("progressLine", func() {
 			Expect(got).To(ContainSubstring("20/20 ready"))
 		}
 	})
+
+	It("excludes Blocked results from both the numerator and the denominator", func() {
+		results := []install.Result{
+			{Check: install.Check{Name: "a", Category: install.JobCategory}, Status: install.Pass},
+			{Check: install.Check{Name: "b", Category: install.JobCategory}, Status: install.Failed},
+			// Two Blocked jobs that can never complete without a retry --
+			// if counted, this would read "2/4 ready" (50%) instead of the
+			// honest "2/2 ready" (100% of what can actually run right now).
+			{Check: install.Check{Name: "c", Category: install.JobCategory}, Status: install.Blocked},
+			{Check: install.Check{Name: "d", Category: install.JobCategory}, Status: install.Blocked},
+		}
+
+		got := progressLine(results, 76)
+
+		Expect(got).To(ContainSubstring("1/2 ready"))
+	})
 })
 
 var _ = Describe("progressColor", func() {
@@ -361,6 +377,16 @@ var _ = Describe("statusIcon", func() {
 		Expect(spinnerFrames).NotTo(ContainElement(icon))
 		Expect(style.GetFaint()).To(BeTrue())
 		Expect(style.GetForeground()).To(Equal(lipgloss.Color(colorGray)))
+	})
+
+	It("shows a distinct, dim red icon for Blocked -- neither the plain queued gray nor the bold Failed X", func() {
+		result := install.Result{Check: requiredCheck, Status: install.Blocked, Message: `blocked ("osac-aap-bootstrap" failed)`}
+
+		icon, style := statusIcon(result, 0)
+
+		Expect(icon).NotTo(Equal("✗"))
+		Expect(style.GetFaint()).To(BeTrue())
+		Expect(style.GetForeground()).To(Equal(lipgloss.Color(colorRed)))
 	})
 
 	It("doesn't animate the not-created-yet icon across spinner frames, unlike an actively-progressing one", func() {

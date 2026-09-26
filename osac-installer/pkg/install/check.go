@@ -59,6 +59,16 @@ const (
 	// `osac install status` show "installing" rather than a false alarm
 	// while a rollout is still in progress.
 	Progressing
+	// Blocked means this hasn't been created yet and, unlike Progressing,
+	// never will be without intervention: an earlier Helm hook in the same
+	// install/upgrade phase has already Failed, and Helm aborts the rest of
+	// that phase the moment one hook fails (see
+	// osac-installer/pkg/install/workload.go's applyHookBlocking). Distinct
+	// from Progressing so a viewer -- and the progress bar's own percentage
+	// -- can tell "hasn't had its turn yet" apart from "can't possibly run
+	// until the failure ahead of it is resolved and the install is
+	// retried".
+	Blocked
 )
 
 // String implements fmt.Stringer.
@@ -70,6 +80,8 @@ func (s Status) String() string {
 		return "fail"
 	case Progressing:
 		return "progressing"
+	case Blocked:
+		return "blocked"
 	default:
 		return "unknown"
 	}

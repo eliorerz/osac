@@ -282,12 +282,23 @@ func progressLine(results []install.Result, width int) string {
 		if !installationCategories[result.Check.Category] {
 			continue
 		}
-		total++
 		switch result.Status {
 		case install.Pass:
 			passed++
+			total++
 		case install.Failed:
 			failed = true
+			total++
+		case install.Blocked:
+			// Excluded from the denominator entirely, not just from the
+			// numerator: this item can never complete without a retry once
+			// the hook ahead of it in the same phase has failed, so
+			// counting it against the total would make a stuck install
+			// read as closer to "ready" than it actually is (see
+			// applyHookBlocking's doc comment for the live example that
+			// motivated this).
+		default:
+			total++
 		}
 	}
 	barColor := progressColor(failed)
@@ -369,13 +380,14 @@ func truncateEllipsis(s string, width int) string {
 // statusIcon picks a check's icon and color: ✓ green once it Pass-es, a
 // spinner (or a static "○", see notYetCreatedMessage) while it's
 // Progressing -- not a failure, so it must never render as red/yellow the
-// way an actual failure does -- ✗ red once it's genuinely Failed at
-// Required severity, and ⚠ yellow once it's Failed at Warning severity: a
-// visibly different symbol, not just a different color, so a
-// Warning-severity gap (optional depending on which services this install
-// actually uses, e.g. cnv-operator only matters for vmaas) doesn't read at
-// a glance as the same kind of problem as a genuinely blocking Required
-// failure.
+// way an actual failure does -- a dim red "○" once it's Blocked (stuck
+// behind an earlier hook that's already Failed, see install.Blocked), ✗ red
+// once it's genuinely Failed at Required severity, and ⚠ yellow once it's
+// Failed at Warning severity: a visibly different symbol, not just a
+// different color, so a Warning-severity gap (optional depending on which
+// services this install actually uses, e.g. cnv-operator only matters for
+// vmaas) doesn't read at a glance as the same kind of problem as a
+// genuinely blocking Required failure.
 // spinnerFrames is a small Braille-pattern spinner (all single-width in
 // virtually every terminal, unlike many other "animation" glyphs), cycled
 // through by spinnerFrame to show a Progressing check as actively moving
@@ -396,6 +408,12 @@ func statusIcon(result install.Result, spinnerFrame int) (string, lipgloss.Style
 		}
 		frame := spinnerFrames[spinnerFrame%len(spinnerFrames)]
 		return frame, bold.Foreground(lipgloss.Color(colorBlue))
+	case install.Blocked:
+		// Same hollow-circle "nothing is actually happening" shape as a
+		// plain queued item, but red/faint instead of gray: this isn't
+		// merely waiting for its turn, it's stuck behind a genuine failure
+		// upstream and won't proceed without a retry.
+		return "○", lipgloss.NewStyle().Faint(true).Foreground(lipgloss.Color(colorRed))
 	default:
 		if result.Check.Severity == install.Warning {
 			return "⚠", bold.Foreground(lipgloss.Color(colorYellow))
