@@ -303,27 +303,36 @@ var _ = Describe("sections", func() {
 	})
 })
 
-var _ = Describe("osacFont", func() {
-	It("has every glyph at a consistent height and per-glyph row width", func() {
-		for letter, glyph := range osacFont {
-			Expect(glyph).To(HaveLen(osacFontHeight), "letter %q", string(letter))
-			width := len([]rune(glyph[0]))
-			for i, row := range glyph {
-				Expect([]rune(row)).To(HaveLen(width), "letter %q row %d", string(letter), i)
-			}
+var _ = Describe("hatLogo", func() {
+	It("pads every row to hatLogoWidth so the wordmark lines up at a fixed column", func() {
+		for i, row := range hatLogo {
+			Expect([]rune(row)).To(HaveLen(hatLogoWidth), "row %d", i)
 		}
 	})
 })
 
 var _ = Describe("banner", func() {
-	It("renders osacFontHeight lines plus a trailing blank line", func() {
+	It("renders hatLogo's lines plus a trailing blank line", func() {
 		got := banner()
 
 		lines := strings.Split(got, "\n")
-		// osacFontHeight content lines + 1 blank line from the trailing
-		// "\n\n" + the empty string split produces after the final "\n".
-		Expect(lines).To(HaveLen(osacFontHeight + 2))
-		Expect(lines[osacFontHeight]).To(BeEmpty())
+		// hatLogo's own lines + 1 blank line from the trailing "\n\n" + the
+		// empty string split produces after the final "\n".
+		Expect(lines).To(HaveLen(len(hatLogo) + 2))
+		Expect(lines[len(hatLogo)]).To(BeEmpty())
+	})
+
+	It("places the wordmark beside hatLogo, starting at wordmarkRow", func() {
+		got := banner()
+
+		Expect(got).To(ContainSubstring("●")) // the hat mark itself
+		for _, row := range wordmark {
+			Expect(got).To(ContainSubstring(row))
+		}
+	})
+
+	It("colors both the hat logo and the wordmark Red Hat red", func() {
+		Expect(colorBanner).To(Equal("#EE0000"))
 	})
 })
 

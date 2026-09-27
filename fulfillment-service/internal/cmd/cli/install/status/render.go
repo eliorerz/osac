@@ -27,14 +27,14 @@ import (
 // Colors match render.Table's STATUS column, for a consistent look across
 // `osac install discover/validate/status`.
 const (
-	colorGreen  = "10" // Pass; also the progress bar while nothing has genuinely failed
-	colorRed    = "9"  // Fail, Required; also the progress bar once something has
-	colorYellow = "11" // Fail, Warning
-	colorBlue   = "12" // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
-	colorGray   = "8"  // Progressing/"not created yet" -- queued, nothing actually happening yet
-	colorBanner = "99" // Purple
-	colorBorder = "99"
-	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
+	colorGreen  = "10"      // Pass; also the progress bar while nothing has genuinely failed
+	colorRed    = "9"       // Fail, Required; also the progress bar once something has
+	colorYellow = "11"      // Fail, Warning
+	colorBlue   = "12"      // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
+	colorGray   = "8"       // Progressing/"not created yet" -- queued, nothing actually happening yet
+	colorBanner = "#EE0000" // Red Hat red -- the hat logo + wordmark banner
+	colorBorder = "#EE0000" // Red Hat red -- the frame border, matching the banner
+	colorHeader = "14"      // Cyan section headers (RESOURCES/OPERATORS)
 )
 
 // notYetCreatedMessage is the exact Message install.WorkloadChecks sets on
@@ -422,62 +422,61 @@ func statusIcon(result install.Result, spinnerFrame int) (string, lipgloss.Style
 	}
 }
 
-// osacFont is a small 6-row block font, just the letters OSAC needs. Every
-// glyph's rows are the same rune-length (verified by TestOSACFontGlyphsAlign
-// in render_test.go), so banner() can concatenate them column-wise without
-// hand-aligning a giant multi-line string by eye.
-var osacFont = map[rune][]string{
-	'O': {
-		" ████ ",
-		"██  ██",
-		"██  ██",
-		"██  ██",
-		"██  ██",
-		" ████ ",
-	},
-	'S': {
-		" █████",
-		"██    ",
-		" ████ ",
-		"    ██",
-		"    ██",
-		"█████ ",
-	},
-	'A': {
-		" ████ ",
-		"██  ██",
-		"██████",
-		"██  ██",
-		"██  ██",
-		"██  ██",
-	},
-	'C': {
-		" █████",
-		"██    ",
-		"██    ",
-		"██    ",
-		"██    ",
-		" █████",
-	},
+// hatLogo is OSAC's mark: a tilted fedora, box-downsampled from a larger
+// hand-drawn illustration (density-mapped and area-averaged, then
+// requantized to this same four-glyph ramp) to about half the original
+// character count while keeping its silhouette -- the dented crown, the
+// tilt, the tapered brim -- recognizable at this size. Every row is padded
+// to hatLogoWidth so banner() can lay the wordmark out at a fixed column
+// beside it regardless of each row's own content length.
+var hatLogo = []string{
+	"            ○◉◉○··                  ",
+	"          ○●●●●●●●●◉◉○◉◉○·          ",
+	"         ○●●●●●●●●●●●●●●●●◉         ",
+	"        ·●●●●●●●●●●●●●●●●●●·        ",
+	" ·○◉◉○○○ ·●●●●●●●●●●●●●●●●◉·        ",
+	"◉●●●●●●●●○○  ○◉●●●●●●●●●●◉·○●       ",
+	"·◉●●●●●●●●●●◉○○ ○○○○○○· ○○◉●●◉◉··   ",
+	"   ○○◉●●●●●●●●●●●●◉○◉●●●●●●●●●●●◉○  ",
+	"      ··○◉●●●●●●●●●●●●●●●●●●●●●●●●●·",
+	"           ·○○◉●●●●●●●●●●●●●●●●●●●●○",
+	"               ··○◉◉●●●●●●●●●●●●●●●·",
+	"                     ·○○○◉◉●●●●◉○·  ",
 }
 
-// osacFontHeight is the row count every osacFont glyph has.
-const osacFontHeight = 6
+// hatLogoWidth is the rune width every hatLogo row is padded to.
+const hatLogoWidth = 36
 
-// banner renders "OSAC" as block letters, colored, with a trailing blank
-// line separating it from the rest of the view.
+// wordmark is the "RED HAT" block-letter mark shown beside hatLogo.
+var wordmark = []string{
+	"░█▀▀░█░░░█▀█░█░█░█▀▄",
+	"░█░░░█░░░█░█░█░█░█░█",
+	"░▀▀▀░▀▀▀░▀▀▀░▀▀▀░▀▀░",
+	"░█▀▀░█░█░▀█▀░█▀▀░█▀█░▀█▀░▀█▀░█▀█░█▀█░█▀▀",
+	"░█▀▀░▄▀▄░░█░░█▀▀░█░█░░█░░░█░░█░█░█░█░▀▀█",
+	"░▀▀▀░▀░▀░░▀░░▀▀▀░▀░▀░░▀░░▀▀▀░▀▀▀░▀░▀░▀▀▀",
+}
+
+// wordmarkRow is the hatLogo row index (0-indexed) wordmark's first line
+// lines up with, chosen to vertically center wordmark's 6 lines within
+// hatLogo's 12.
+const wordmarkRow = 2
+
+// wordmarkGap is the blank columns between hatLogo's padded width and
+// wordmark's own left edge.
+const wordmarkGap = 5
+
+// banner renders hatLogo with wordmark placed beside it, both in Red Hat
+// red, with a trailing blank line separating it from the rest of the view.
 func banner() string {
-	rows := make([]string, osacFontHeight)
-	for _, r := range "OSAC" {
-		glyph := osacFont[r]
-		for i := range rows {
-			rows[i] += glyph[i] + " "
-		}
-	}
 	style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorBanner))
 	var b strings.Builder
-	for _, row := range rows {
-		b.WriteString(style.Render(row))
+	for i, row := range hatLogo {
+		line := row
+		if j := i - wordmarkRow; j >= 0 && j < len(wordmark) {
+			line += strings.Repeat(" ", wordmarkGap) + wordmark[j]
+		}
+		b.WriteString(style.Render(line))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
