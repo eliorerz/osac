@@ -27,14 +27,14 @@ import (
 // Colors match render.Table's STATUS column, for a consistent look across
 // `osac install discover/validate/status`.
 const (
-	colorGreen  = "10"      // Pass; also the progress bar while nothing has genuinely failed
-	colorRed    = "9"       // Fail, Required; also the progress bar once something has
-	colorYellow = "11"      // Fail, Warning
-	colorBlue   = "12"      // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
-	colorGray   = "8"       // Progressing/"not created yet" -- queued, nothing actually happening yet
-	colorBanner = "#EE0000" // Red Hat red -- the hat logo + wordmark banner
-	colorBorder = "#EE0000" // Red Hat red -- the frame border, matching the banner
-	colorHeader = "14"      // Cyan section headers (RESOURCES/OPERATORS)
+	colorGreen  = "10" // Pass; also the progress bar while nothing has genuinely failed
+	colorRed    = "9"  // Fail, Required; also the progress bar once something has
+	colorYellow = "11" // Fail, Warning
+	colorBlue   = "12" // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
+	colorGray   = "8"  // Progressing/"not created yet" -- queued, nothing actually happening yet
+	colorBanner = "15" // White -- the hat logo + wordmark banner
+	colorBorder = "15" // White -- the frame border, matching the banner
+	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
 )
 
 // notYetCreatedMessage is the exact Message install.WorkloadChecks sets on
@@ -430,25 +430,27 @@ func statusIcon(result install.Result, spinnerFrame int) (string, lipgloss.Style
 // to hatLogoWidth so banner() can lay the wordmark out at a fixed column
 // beside it regardless of each row's own content length.
 var hatLogo = []string{
-	"            ○◉◉○··                  ",
-	"          ○●●●●●●●●◉◉○◉◉○·          ",
-	"         ○●●●●●●●●●●●●●●●●◉         ",
-	"        ·●●●●●●●●●●●●●●●●●●·        ",
-	" ·○◉◉○○○ ·●●●●●●●●●●●●●●●●◉·        ",
-	"◉●●●●●●●●○○  ○◉●●●●●●●●●●◉·○●       ",
-	"·◉●●●●●●●●●●◉○○ ○○○○○○· ○○◉●●◉◉··   ",
-	"   ○○◉●●●●●●●●●●●●◉○◉●●●●●●●●●●●◉○  ",
-	"      ··○◉●●●●●●●●●●●●●●●●●●●●●●●●●·",
-	"           ·○○◉●●●●●●●●●●●●●●●●●●●●○",
-	"               ··○◉◉●●●●●●●●●●●●●●●·",
-	"                     ·○○○◉◉●●●●◉○·  ",
+	"              ○◉◉○··                  ",
+	"            ○●●●●●●●●◉◉○◉◉○·          ",
+	"           ○●●●●●●●●●●●●●●●●◉         ",
+	"          ·●●●●●●●●●●●●●●●●●●·        ",
+	"   ·○◉◉○○○ ·●●●●●●●●●●●●●●●●◉·        ",
+	"  ◉●●●●●●●●○○  ○◉●●●●●●●●●●◉·○●       ",
+	"  ·◉●●●●●●●●●●◉○○ ○○○○○○· ○○◉●●◉◉··   ",
+	"     ○○◉●●●●●●●●●●●●◉○◉●●●●●●●●●●●◉○  ",
+	"        ··○◉●●●●●●●●●●●●●●●●●●●●●●●●●·",
+	"             ·○○◉●●●●●●●●●●●●●●●●●●●●○",
+	"                 ··○◉◉●●●●●●●●●●●●●●●·",
+	"                       ·○○○◉◉●●●●◉○·  ",
 }
 
 // hatLogoWidth is the rune width every hatLogo row is padded to.
-const hatLogoWidth = 36
+const hatLogoWidth = 38
 
-// wordmark is the "RED HAT" block-letter mark shown beside hatLogo.
+// wordmark is the "RED HAT" mark shown beside hatLogo: a plain-text label
+// followed by the same wordmark spelled out again in block letters.
 var wordmark = []string{
+	"RED HAT",
 	"░█▀▀░█░░░█▀█░█░█░█▀▄",
 	"░█░░░█░░░█░█░█░█░█░█",
 	"░▀▀▀░▀▀▀░▀▀▀░▀▀▀░▀▀░",
@@ -458,16 +460,16 @@ var wordmark = []string{
 }
 
 // wordmarkRow is the hatLogo row index (0-indexed) wordmark's first line
-// lines up with, chosen to vertically center wordmark's 6 lines within
-// hatLogo's 12.
-const wordmarkRow = 2
+// lines up with.
+const wordmarkRow = 3
 
 // wordmarkGap is the blank columns between hatLogo's padded width and
 // wordmark's own left edge.
-const wordmarkGap = 5
+const wordmarkGap = 7
 
-// banner renders hatLogo with wordmark placed beside it, both in Red Hat
-// red, with a trailing blank line separating it from the rest of the view.
+// banner renders hatLogo with wordmark placed beside it, both in white
+// (colorBanner), with a trailing blank line separating it from the rest of
+// the view.
 func banner() string {
 	style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorBanner))
 	var b strings.Builder
