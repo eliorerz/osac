@@ -27,14 +27,15 @@ import (
 // Colors match render.Table's STATUS column, for a consistent look across
 // `osac install discover/validate/status`.
 const (
-	colorGreen  = "10" // Pass; also the progress bar while nothing has genuinely failed
-	colorRed    = "9"  // Fail, Required; also the progress bar once something has
-	colorYellow = "11" // Fail, Warning
-	colorBlue   = "12" // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
-	colorGray   = "8"  // Progressing/"not created yet" -- queued, nothing actually happening yet
-	colorBanner = "15" // White -- the hat logo + wordmark banner
-	colorBorder = "15" // White -- the frame border, matching the banner
-	colorHeader = "14" // Cyan section headers (RESOURCES/OPERATORS)
+	colorGreen  = "10"      // Pass; also the progress bar while nothing has genuinely failed
+	colorRed    = "9"       // Fail, Required; also the progress bar once something has
+	colorYellow = "11"      // Fail, Warning
+	colorBlue   = "12"      // Progressing spinner -- distinct from red/yellow/green so "installing" never reads as a failure
+	colorGray   = "8"       // Progressing/"not created yet" -- queued, nothing actually happening yet
+	colorHat    = "#EE0000" // Red Hat red -- the hat logo, unlike the rest of the banner
+	colorBanner = "15"      // White -- the wordmark beside the hat logo
+	colorBorder = "15"      // White -- the frame border, matching the wordmark
+	colorHeader = "14"      // Cyan section headers (RESOURCES/OPERATORS)
 )
 
 // notYetCreatedMessage is the exact Message install.WorkloadChecks sets on
@@ -467,18 +468,19 @@ const wordmarkRow = 3
 // wordmark's own left edge.
 const wordmarkGap = 7
 
-// banner renders hatLogo with wordmark placed beside it, both in white
-// (colorBanner), with a trailing blank line separating it from the rest of
-// the view.
+// banner renders hatLogo in Red Hat red beside wordmark in white
+// (colorBanner, matching the border), with a trailing blank line separating
+// it from the rest of the view.
 func banner() string {
-	style := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorBanner))
+	hatStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorHat))
+	wordmarkStyle := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color(colorBanner))
 	var b strings.Builder
 	for i, row := range hatLogo {
-		line := row
+		b.WriteString(hatStyle.Render(row))
 		if j := i - wordmarkRow; j >= 0 && j < len(wordmark) {
-			line += strings.Repeat(" ", wordmarkGap) + wordmark[j]
+			b.WriteString(strings.Repeat(" ", wordmarkGap))
+			b.WriteString(wordmarkStyle.Render(wordmark[j]))
 		}
-		b.WriteString(style.Render(line))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")

@@ -331,9 +331,11 @@ var _ = Describe("banner", func() {
 		}
 	})
 
-	It("colors both the hat logo and the wordmark white, matching the border", func() {
+	It("colors the hat logo Red Hat red, distinct from the white wordmark/border", func() {
+		Expect(colorHat).To(Equal("#EE0000"))
 		Expect(colorBanner).To(Equal(colorBorder))
 		Expect(colorBanner).To(Equal("15"))
+		Expect(colorHat).NotTo(Equal(colorBanner))
 	})
 })
 
