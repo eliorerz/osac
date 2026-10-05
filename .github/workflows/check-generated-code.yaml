@@ -89,3 +89,36 @@ jobs:
           git status --porcelain -- proto/
           exit 1
         fi
+
+  check-breaking-changes:
+    name: Check breaking changes (proto)
+    needs: changes
+    # Keep this check reportable on every PR. Non-proto changes skip the Buf
+    # invocation and succeed, while a failed path filter fails the check.
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - name: Fail if path filter failed
+      if: needs.changes.result != 'success'
+      run: exit 1
+    - id: should-run
+      if: needs.changes.result == 'success' && (vars.CI_GATING_ENABLED == 'false' || needs.changes.outputs.proto == 'true')
+      run: echo "run=true" >> "$GITHUB_OUTPUT"
+    - if: steps.should-run.outputs.run
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+    - if: steps.should-run.outputs.run
+      uses: bufbuild/buf-action@8c6a16e16f12ba20b6470afa9c2ba9b5ba8c97c3  # v1
+      with:
+        version: '1.50.0'
+        setup_only: true
+    - if: steps.should-run.outputs.run
+      name: Check for breaking changes
+      working-directory: proto
+      env:
+        BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+      run: buf breaking . --against "../.git#ref=${BASE_SHA},subdir=proto" --error-format github-actions
