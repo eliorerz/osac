@@ -1967,8 +1967,14 @@ jobs:
         # Suffixed with the run attempt so a GitHub "Re-run failed jobs"
         # creates fresh resources instead of colliding with an immutable
         # Snapshot spec from a prior attempt, or silently no-op'ing against
-        # an already-existing Release.
-        resource_name = f"osac-release-v{VERSION}-attempt{RUN_ATTEMPT}"
+        # an already-existing Release. VERSION's dots are replaced with
+        # hyphens -- Snapshot's own metadata.name accepts dots fine, but
+        # Release's spec.snapshot reference field enforces a stricter
+        # pattern (^[a-z0-9]([-a-z0-9]*[a-z0-9])?$) that rejects them;
+        # confirmed live via a real Release creation attempt ("osac-release-
+        # v0.0.22-attempt1" was rejected with exactly this pattern error).
+        version_slug = VERSION.replace(".", "-")
+        resource_name = f"osac-release-v{version_slug}-attempt{RUN_ATTEMPT}"
         snapshot = {
             "apiVersion": "appstudio.redhat.com/v1alpha1",
             "kind": "Snapshot",
