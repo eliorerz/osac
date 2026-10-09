@@ -22,6 +22,20 @@ Path filter skips docs / unit-test-only PRs (`!**/tests/**` and friends). `tests
 
 Details + smoke checklist: [`.github/e2e-readiness.md`](e2e-readiness.md).
 
+## OSAC CI check
+
+`workflows/osac-ci.yml` posts one `OSAC CI` check on every pull request: what the PR is waiting for, who has to act and
+what happens next. It is informational and not a required check. The program, its policy (`policy/osac.yml`) and the
+state descriptions live in [osac-project/osac-ci](https://github.com/osac-project/osac-ci); the workflow calls its
+`publish` action pinned to a full commit SHA, so the code and policy only change by bumping that pin in a reviewed PR.
+
+- `workflow_run` lists workflows by exact name. When a workflow that reports a required check is added, renamed or
+  removed, update the list in `osac-ci.yml`. A missing name only delays an update until the next event or the 30-minute
+  sweep.
+- The workflow never checks out or runs pull request code and holds the read-only `osac-ci-reader` app credentials.
+  Keep it that way: no `actions/checkout` of the PR, no PR text in a script.
+- The sweep is sized for the built-in token's 1,000 requests an hour; see the osac-ci README before changing it.
+
 ## Release safety
 
 Nightly builds use provisional `sha-*` image tags while all build, unit,

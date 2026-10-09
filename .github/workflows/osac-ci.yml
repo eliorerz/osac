@@ -1,0 +1,98 @@
+---
+# Posts the "OSAC CI" check on pull requests: one verdict that says what a pull request is waiting for, who has to act
+# and what happens next. It is informational for now: the check is not required, so a bug here cannot block a merge.
+# The program, its policy and this pin live in osac-project/osac-ci (docs: its README); change them together.
+#
+# pull_request_target, workflow_run and schedule all run the workflow file from the default branch with the base
+# repository's token, which is what writing a check on a fork pull request needs. Nothing here checks out or runs pull
+# request code.
+#
+# workflow_run takes exact workflow names, no wildcards: list every workflow that reports a required check (the
+# `ci-status-checks` ruleset). A workflow added later is missing here until it is listed, which only delays an update
+# until the next event or sweep.
+name: OSAC CI
+on:  # zizmor: ignore[dangerous-triggers] -- no pull request code is checked out or run
+  pull_request_target:
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft, labeled, unlabeled, edited]
+    branches: [main]
+  workflow_run:
+    workflows:
+      - "Ansible Lint"
+      - "Build bare-metal-fulfillment-operator image"
+      - "Build container image"
+      - "Check generated code"
+      - "Check pull request"
+      - "Darwin Keychain Tests"
+      - "Dependency Review"
+      - "E2E BMaaS Full Install"
+      - "E2E CaaS Full Install"
+      - "E2E VMaaS Full Install"
+      - "Helm Lint"
+      - "Integration Tests"
+      - "label-gate"
+      - "pre-commit"
+      - "Unit Tests"
+    types: [completed]
+  # A sweep re-evaluates a slice of the open pull requests, which repairs any event that was missed. The budget below is
+  # sized for the built-in token's limit of 1,000 requests an hour (about 7 per pull request): 30 pull requests every
+  # 30 minutes. The interval must match the schedule, or the rotation skips slices.
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+    inputs:
+      number:
+        description: Pull request number (empty means a sweep)
+        default: ""
+
+permissions:
+  contents: read
+
+# One run at a time per pull request (or per commit for workflow_run, which does not name the pull request of a fork).
+# GitHub keeps one waiting run per group, so a burst of finished workflows costs one extra evaluation, not one each.
+concurrency:
+  group: osac-ci-${{ github.event.pull_request.number || github.event.workflow_run.head_sha || inputs.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    # A finished run only matters when it belongs to a pull request (not to a push to main, a merge queue or a schedule).
+    if: >-
+      github.repository == 'osac-project/osac' &&
+      (github.event_name != 'workflow_run' ||
+       github.event.workflow_run.event == 'pull_request' ||
+       github.event.workflow_run.event == 'pull_request_target')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read  # the action is fetched from osac-ci by the runner; nothing of this repository is checked out
+      checks: write  # post the OSAC CI check run
+      pull-requests: read  # read the pull request, its reviews and files
+    steps:
+      # Only for organization lookups (is the author a member, who is in a code-owner team). The app has no other
+      # permission. If the token cannot be created the next step still posts: the verdict is then a visible
+      # planner-error, so a broken credential never leaves a pull request without a check.
+      - name: Create a token that can read organization membership
+        id: org-token
+        continue-on-error: true
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          client-id: ${{ secrets.OSAC_CI_READER_APP_ID }}
+          private-key: ${{ secrets.OSAC_CI_READER_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          permission-members: read
+      - uses: osac-project/osac-ci/.github/actions/publish@fa97a322e467cbce1de9c54bd3344c46eb8bcac3  # main after #17
+        with:
+          github-token: ${{ github.token }}
+          org-token: ${{ steps.org-token.outputs.token }}
+          lookup-membership: "true"
+          repo: ${{ github.repository }}
+          policy: policy/osac.yml
+          number: ${{ github.event.pull_request.number || inputs.number }}
+          head-owner: ${{ github.event.workflow_run.head_repository.owner.login }}
+          head-branch: ${{ github.event.workflow_run.head_branch }}
+          sweep: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.number == '') }}
+          recent: "15"
+          rotate: "15"
+          reserve: "150"
+          interval: "1800"
+          note: "Informational for now: this check is not required to merge."
