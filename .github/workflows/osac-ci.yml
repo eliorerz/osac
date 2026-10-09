@@ -81,7 +81,7 @@ jobs:
           private-key: ${{ secrets.OSAC_CI_READER_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-members: read
-      - uses: osac-project/osac-ci/.github/actions/publish@9fb5f834da9d717a45e28233328f3764e77ce3ce  # osac-ci main, with the stale-only sweep
+      - uses: osac-project/osac-ci/.github/actions/publish@8967ca0c2fd86603fe7753967330905ec3615f5b  # osac-ci main, with the protected-path rule for the pipeline files
         with:
           github-token: ${{ github.token }}
           org-token: ${{ steps.org-token.outputs.token }}
