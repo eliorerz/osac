@@ -38,7 +38,7 @@ state descriptions live in [osac-project/osac-ci](https://github.com/osac-projec
   (`stale-only`), so it is cheap. The built-in token allows 1,000 requests an hour; see the osac-ci README before
   changing it.
 - Changes to the files that define the checks (`.github/workflows`, `actions`, `scripts`, `filters`, `CODEOWNERS`,
-  `.pre-commit-config.yaml`) need an approval from `@osac-project/wg-infra`. `CODEOWNERS` lists them and the OSAC CI
+  `.pre-commit-config.yaml`; Markdown in them excepted) need an approval from `@osac-project/wg-infra`. `CODEOWNERS` lists them and the OSAC CI
   policy applies the same list; keep both in step.
 
 ## Release safety

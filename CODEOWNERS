@@ -18,6 +18,8 @@
 /.github/scripts/ @osac-project/wg-infra
 /.github/filters/ @osac-project/wg-infra
 /.pre-commit-config.yaml @osac-project/wg-infra
+# Markdown inside those folders (a README) cannot change a check: a rule with no owner clears ownership.
+/.github/**/*.md
 
 # fullsend Configuration Protection
 # Prevents pull_request_target misconfiguration and unauthorized workflow changes
