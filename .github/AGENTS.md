@@ -30,11 +30,16 @@ state descriptions live in [osac-project/osac-ci](https://github.com/osac-projec
 `publish` action pinned to a full commit SHA, so the code and policy only change by bumping that pin in a reviewed PR.
 
 - `workflow_run` lists workflows by exact name. When a workflow that reports a required check is added, renamed or
-  removed, update the list in `osac-ci.yml`. A missing name only delays an update until the next event or the 30-minute
+  removed, update the list in `osac-ci.yml`. A missing name only delays an update until the next event or the 10-minute
   sweep.
 - The workflow never checks out or runs pull request code and holds the read-only `osac-ci-reader` app credentials.
   Keep it that way: no `actions/checkout` of the PR, no PR text in a script.
-- The sweep is sized for the built-in token's 1,000 requests an hour; see the osac-ci README before changing it.
+- The sweep re-evaluates only the pull requests whose posted verdict is missing, errored, out of date, stuck or old
+  (`stale-only`), so it is cheap. The built-in token allows 1,000 requests an hour; see the osac-ci README before
+  changing it.
+- Changes to the files that define the checks (`.github/workflows`, `actions`, `scripts`, `filters`, `CODEOWNERS`,
+  `.pre-commit-config.yaml`) need an approval from `@osac-project/wg-infra`. `CODEOWNERS` lists them and the OSAC CI
+  policy applies the same list; keep both in step.
 
 ## Release safety
 

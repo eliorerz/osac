@@ -33,11 +33,12 @@ on:  # zizmor: ignore[dangerous-triggers] -- no pull request code is checked out
       - "pre-commit"
       - "Unit Tests"
     types: [completed]
-  # A sweep re-evaluates a slice of the open pull requests, which repairs any event that was missed. The budget below is
-  # sized for the built-in token's limit of 1,000 requests an hour (about 7 per pull request): 30 pull requests every
-  # 30 minutes. The interval must match the schedule, or the rotation skips slices.
+  # The events above update a pull request as it changes. The sweep repairs what they miss (an event that never came,
+  # a run that failed): it lists every open pull request with its latest verdict in one query and re-evaluates only
+  # the ones whose verdict is missing, errored, older than the PR's last change, stuck in progress or old, so a quiet
+  # repository costs a request or two per run.
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
     inputs:
       number:
@@ -80,7 +81,7 @@ jobs:
           private-key: ${{ secrets.OSAC_CI_READER_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-members: read
-      - uses: osac-project/osac-ci/.github/actions/publish@fa97a322e467cbce1de9c54bd3344c46eb8bcac3  # main after #17
+      - uses: osac-project/osac-ci/.github/actions/publish@9fb5f834da9d717a45e28233328f3764e77ce3ce  # osac-ci main, with the stale-only sweep
         with:
           github-token: ${{ github.token }}
           org-token: ${{ steps.org-token.outputs.token }}
@@ -91,8 +92,8 @@ jobs:
           head-owner: ${{ github.event.workflow_run.head_repository.owner.login }}
           head-branch: ${{ github.event.workflow_run.head_branch }}
           sweep: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.number == '') }}
-          recent: "15"
-          rotate: "15"
+          stale-only: "true"
+          stale-after: "1800"
+          max-age: "21600"
           reserve: "150"
-          interval: "1800"
           note: "Informational for now: this check is not required to merge."

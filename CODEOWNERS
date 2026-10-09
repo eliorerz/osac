@@ -9,6 +9,16 @@
 # Protects this file from unauthorized modification
 /CODEOWNERS @osac-project/wg-infra
 
+# CI pipeline definition
+# A pull request can change the workflows and scripts that produce the checks it is judged by, and then a passing
+# check proves little. A change to them needs review from the infrastructure team. The OSAC CI check applies the same
+# rule from its own policy (osac-project/osac-ci, policy/osac.yml): keep the two lists in step.
+/.github/workflows/ @osac-project/wg-infra
+/.github/actions/ @osac-project/wg-infra
+/.github/scripts/ @osac-project/wg-infra
+/.github/filters/ @osac-project/wg-infra
+/.pre-commit-config.yaml @osac-project/wg-infra
+
 # fullsend Configuration Protection
 # Prevents pull_request_target misconfiguration and unauthorized workflow changes
 # per ADR-0033 security requirements.
