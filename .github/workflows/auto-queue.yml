@@ -16,10 +16,23 @@ jobs:
     if: github.repository == 'osac-project/osac' && (github.event_name == 'pull_request_target' || github.event_name == 'pull_request_review')
     runs-on: ubuntu-latest
     steps:
+      - name: Create osac-ci App token
+        id: osac-ci-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.OSAC_CI_APP_ID }}
+          private-key: ${{ secrets.OSAC_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: osac
+          permission-actions: write
+          permission-administration: read
+          permission-issues: write
+          permission-merge-queues: write
+          permission-pull-requests: write
       - name: Remove lgtm on new push
         if: github.event.action == 'synchronize'
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: |
           pr=${{ github.event.pull_request.number }}
           if gh pr view "$pr" --repo "${{ github.repository }}" --json labels --jq '[.labels[].name]' | jq -e 'index("lgtm")' > /dev/null; then
@@ -29,7 +42,7 @@ jobs:
 
       - name: Dismiss changes-requested reviews
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: |
           pr=${{ github.event.pull_request.number }}
           gh api "repos/${{ github.repository }}/pulls/$pr/reviews" --jq '.[] | select(.state == "CHANGES_REQUESTED") | .id' | while read -r review_id; do
@@ -40,7 +53,7 @@ jobs:
       - name: Check repo collaborator
         id: org-check
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: |
           author="${{ github.event.pull_request.user.login }}"
           echo "author=$author"
@@ -76,7 +89,7 @@ jobs:
           && steps.org-check.outputs.org_member == 'true'
           && steps.label-check.outputs.blocked == 'false'
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: gh pr merge ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --auto --rebase
 
       - name: Disable auto-merge
@@ -84,16 +97,29 @@ jobs:
           steps.org-check.outputs.org_member == 'true'
           && steps.label-check.outputs.blocked == 'true'
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: gh pr merge ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --disable-auto
 
   requeue-eligible-prs:
     if: github.repository == 'osac-project/osac' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     steps:
+      - name: Create osac-ci App token
+        id: osac-ci-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.OSAC_CI_APP_ID }}
+          private-key: ${{ secrets.OSAC_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: osac
+          permission-actions: write
+          permission-administration: read
+          permission-issues: write
+          permission-merge-queues: write
+          permission-pull-requests: write
       - name: Re-enable auto-merge on eligible PRs
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: |
           set -euo pipefail
           echo "Scanning for eligible PRs without auto-merge..."

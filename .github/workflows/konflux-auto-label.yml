@@ -46,9 +46,21 @@ jobs:
     if: github.event.pull_request.user.login == 'red-hat-konflux-kflux-prd-rh02[bot]'
     runs-on: ubuntu-latest
     steps:
+      - name: Create osac-ci App token
+        id: osac-ci-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          app-id: ${{ secrets.OSAC_CI_APP_ID }}
+          private-key: ${{ secrets.OSAC_CI_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: osac
+          permission-actions: write
+          permission-administration: read
+          permission-issues: write
+          permission-pull-requests: write
       - name: Apply required labels
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: |
           set -euo pipefail
           # Known, accepted race on `synchronize`: ok-to-test-label-cleanup.yml
@@ -70,7 +82,7 @@ jobs:
 
       - name: Prefix title with NO-ISSUE when it has no Jira reference
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: |
           set -euo pipefail
           # Konflux titles ("Update dependency X to vY.Y.Y") never contain a
@@ -91,7 +103,7 @@ jobs:
 
       - name: Approve pending action_required runs for this PR's head SHA
         env:
-          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          GH_TOKEN: ${{ steps.osac-ci-token.outputs.token }}
         run: |
           set -euo pipefail
           # Same approach as osac-test-infra's slash-command-handler.yml
