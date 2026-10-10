@@ -83,7 +83,7 @@ jobs:
           private-key: ${{ secrets.OSAC_CI_READER_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           permission-members: read
-      - uses: osac-project/osac-ci/.github/actions/publish@7686d78d47d0959dd86e121461379bc37916e153  # osac-ci main, finds a run's pull request by its head commit
+      - uses: osac-project/osac-ci/.github/actions/publish@1ae108e22cdbed0f389f248edf28e8b3f9de79db  # osac-ci main, finds a run's pull request by its head commit
         with:
           github-token: ${{ github.token }}
           org-token: ${{ steps.org-token.outputs.token }}

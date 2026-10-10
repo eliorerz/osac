@@ -66,7 +66,7 @@ jobs:
       contents: read  # the action is fetched from osac-ci by the runner; nothing of this repository is checked out
       checks: write  # post the OSAC CI check run on the queue commit
     steps:
-      - uses: osac-project/osac-ci/.github/actions/publish-queue@859a8fe2b26b2d72d654d6d627702d4d7ef5489e  # osac-ci main, with the queue action
+      - uses: osac-project/osac-ci/.github/actions/publish-queue@1ae108e22cdbed0f389f248edf28e8b3f9de79db  # osac-ci main, with the queue action
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
