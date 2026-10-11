@@ -9,7 +9,8 @@ Three checks must pass before a pull request merges, and one approval must be on
 | `jira-reference` | The title names a Jira issue (`OSAC-1234:`) or says `NO-ISSUE:`. | `workflows/jira-reference.yml` |
 
 The approval is a normal GitHub review from someone with write access (and from a code owner when you touch `.github/`,
-`proto/` or the installer, see `CODEOWNERS`). A new commit drops it; a clean rebase or "Update branch" keeps it. When the
+`proto/` or the installer, see `CODEOWNERS`). A new commit drops it; a clean rebase or "Update branch" keeps it. The approval is also
+what starts the E2E: it runs in parallel with `CI` and does not wait for it, and both must pass. When the
 checks are green and the approval is there, the author adds the pull request to the merge queue. The queue runs `CI` and
 `E2E` again on the result of merging, so what lands is what was tested.
 
@@ -23,8 +24,7 @@ not as a separate check.
 | The check says | What to do |
 |---|---|
 | Waiting for an approval | Ask for a review. CodeRabbit's approval or a person with write access starts the E2E; the author cannot approve their own pull request. |
-| Waiting for CI | Nothing; it starts when `CI` passes. |
-| CI failed | Fix CI; the E2E does not run on a commit that failed the cheap checks. |
+| CI failed | Fix CI and push; the E2E does not start on a commit whose cheap checks have already failed. |
 | Changes requested | The reviewer's request has to be resolved first. |
 | Draft | Mark the pull request ready. |
 | Running | Open the check for the run. |

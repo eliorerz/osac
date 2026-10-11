@@ -4,19 +4,21 @@
 #
 #   * a person with write access, or CodeRabbit, has approved the exact head commit (a push drops the approval; a clean
 #     rebase keeps it),
-#   * the CI workflow passed on that commit, and
+#   * no cheap check has already failed on that commit, and
 #   * the change touches something an E2E suite tests (docs and the like need none).
 #
-# Until then the `E2E` status says what it waits for. A commit gets its E2E once: a re-run of the finished run from the
-# Actions page runs it again, and so does a new commit.
+# It does NOT wait for CI: the integration tests alone can take an hour, so the E2E runs in parallel with CI, and both
+# are required for the merge. Until the approval the `E2E` status says what it waits for. A commit gets its E2E once: a
+# re-run of the finished run from the Actions page runs it again, and so does a new commit.
 #
 # Where the rules are: .github/e2e-policy.yml (the suites and the path filters that need them) and osac-ci (the
 # decision, and the status). Where the E2E itself is: the e2e-<suite>-full-install.yml workflows, one job each.
 #
-# This workflow starts when CI starts or finishes and when a review is submitted or dismissed (e2e-review-relay.yml). It
-# runs from the default branch with the repository's token and checks out nothing of the pull request, so a fork pull
-# request is handled like any other. It reads the policy from the default branch, never from the pull request. The suites
-# it calls run the pull request's code, on the commit that was approved and nothing else.
+# This workflow starts when CI starts or finishes and when a review is submitted or dismissed or the pull request changes
+# between draft and ready (e2e-review-relay.yml). It runs from the default branch with the repository's token and checks
+# out nothing of the pull request, so a fork pull request is handled like any other. It reads the policy from the default
+# branch, never from the pull request. The suites it calls run the pull request's code, on the commit that was approved
+# and nothing else.
 name: E2E for pull requests
 run-name: >-
   ${{ github.event_name == 'workflow_dispatch' && format('E2E #{0} (started by hand)', inputs.number) ||
@@ -70,7 +72,7 @@ jobs:
             .github/e2e-policy.yml
             .github/filters/ci-filters.yml
           persist-credentials: false
-      - uses: osac-project/osac-ci/.github/actions/e2e-decide@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-decide@1a0e0390acbca6142366070afc6714242c0ff1b2  # osac-ci e2e-parallel
         id: decide
         with:
           github-token: ${{ github.token }}
@@ -78,7 +80,7 @@ jobs:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
           number: ${{ inputs.number }}
           head-sha: ${{ github.event.workflow_run.head_sha }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-report@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-report@1a0e0390acbca6142366070afc6714242c0ff1b2  # osac-ci e2e-parallel
         id: report
         with:
           github-token: ${{ github.token }}
@@ -145,7 +147,7 @@ jobs:
         env:
           SUITES: ${{ needs.decide.outputs.suites }}
         run: echo "suites=$(jq -r 'join(",")' <<<"${SUITES}")" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@1a0e0390acbca6142366070afc6714242c0ff1b2  # osac-ci e2e-parallel
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
@@ -224,14 +226,14 @@ jobs:
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "suites=${suites}" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-finish@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-finish@1a0e0390acbca6142366070afc6714242c0ff1b2  # osac-ci e2e-parallel
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
           sha: ${{ needs.decide.outputs.sha }}
           result: ${{ steps.result.outputs.result }}
           detail: ${{ steps.result.outputs.suites }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@1a0e0390acbca6142366070afc6714242c0ff1b2  # osac-ci e2e-parallel
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}

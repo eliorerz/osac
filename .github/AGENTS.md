@@ -15,7 +15,7 @@ plus a native approval on the head commit, and the merge queue.
   `filters/ci-filters.yml`. A new check needs a filter, a job in `ci.yml` and an entry in the `needs` of `CI`.
 - `workflows/e2e-pr.yml` decides, from the default branch with the repository token, when the full-install E2E starts for a
   pull request and keeps the single `E2E` status up to date (plus `E2E / VMaaS`, `CaaS`, `BMaaS` while a suite runs): approved on the exact head commit by a person with write
-  access or CodeRabbit, `CI` passed, a suite affected (`e2e-policy.yml`). It checks out no pull request code (only the policy and
+  access or CodeRabbit, a suite affected (`e2e-policy.yml`), and no cheap check already failed. It does not wait for `CI`: the E2E runs in parallel with it and both are required for the merge. It checks out no pull request code (only the policy and
   filters of the default branch), and the suites it calls test the approved commit. `workflows/e2e-queue.yml` runs the
   suites for a merge queue entry. `workflows/e2e-review-relay.yml` only finishes, so a review wakes `e2e-pr.yml`.
 - The `e2e-<suite>-full-install.yml` workflows hold one job each, no gating; they run on a schedule (every 5 hours), by hand
