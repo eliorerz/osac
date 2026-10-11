@@ -79,7 +79,7 @@ jobs:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
           number: ${{ inputs.number }}
           head-sha: ${{ github.event.workflow_run.head_sha }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-report@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-report@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
         id: report
         with:
           github-token: ${{ github.token }}
@@ -127,6 +127,32 @@ jobs:
             gh run cancel "${id}" --repo "${REPO}" || echo "run ${id} already finished"
           done
 
+  # One check per suite on the pull request ("E2E / VMaaS" ...), next to the single E2E check: the suites run in this
+  # workflow run, whose jobs are not on the pull request, so this is how a person on the pull request sees which suite
+  # is waiting, running or failed, and gets to its log. Only the suites that run get a check.
+  track:
+    name: Suite checks
+    needs: decide
+    if: needs.decide.outputs.start == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 140
+    permissions:
+      contents: read
+      checks: write
+      actions: read
+    steps:
+      - name: List the suites
+        id: list
+        env:
+          SUITES: ${{ needs.decide.outputs.suites }}
+        run: echo "suites=$(jq -r 'join(",")' <<<"${SUITES}")" >> "$GITHUB_OUTPUT"
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
+        with:
+          github-token: ${{ github.token }}
+          repo: ${{ github.repository }}
+          sha: ${{ needs.decide.outputs.sha }}
+          suites: ${{ steps.list.outputs.suites }}
+
   # The suites are separate jobs of one workflow each; the decision picks which ones run. A suite that is not needed does
   # not run at all, so it does not show up as a skipped job in the pull request's checks.
   vmaas:
@@ -171,7 +197,7 @@ jobs:
   # Runs whatever happened above, including a cancel, so the check never stays "running".
   finish:
     name: Record the result
-    needs: [decide, vmaas, caas, bmaas]
+    needs: [decide, track, vmaas, caas, bmaas]
     if: always() && needs.decide.outputs.start == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -186,10 +212,10 @@ jobs:
           RESULTS: ${{ toJSON(needs) }}
         run: |
           set -euo pipefail
-          suites=$(jq -r 'del(.decide) | to_entries[] | select(.value.result != "skipped") | "\(.key)=\(.value.result)"' <<<"${RESULTS}" | paste -sd' ')
-          if jq -e 'del(.decide) | [.[].result] | any(. == "failure")' <<<"${RESULTS}" >/dev/null; then
+          suites=$(jq -r 'del(.decide, .track) | to_entries[] | select(.value.result != "skipped") | "\(.key)=\(.value.result)"' <<<"${RESULTS}" | paste -sd' ')
+          if jq -e 'del(.decide, .track) | [.[].result] | any(. == "failure")' <<<"${RESULTS}" >/dev/null; then
             result=failure
-          elif jq -e 'del(.decide) | [.[].result] | any(. == "cancelled")' <<<"${RESULTS}" >/dev/null; then
+          elif jq -e 'del(.decide, .track) | [.[].result] | any(. == "cancelled")' <<<"${RESULTS}" >/dev/null; then
             result=cancelled
           elif [[ -z "${suites}" ]]; then
             # the decision said start but no suite ran: do not report a pass
@@ -199,7 +225,7 @@ jobs:
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "suites=${suites}" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-finish@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-finish@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
@@ -207,3 +233,9 @@ jobs:
           check-id: ${{ needs.decide.outputs.check-id }}
           result: ${{ steps.result.outputs.result }}
           detail: ${{ steps.result.outputs.suites }}
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
+        with:
+          github-token: ${{ github.token }}
+          repo: ${{ github.repository }}
+          sha: ${{ needs.decide.outputs.sha }}
+          results: ${{ steps.result.outputs.suites }}
