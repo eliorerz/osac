@@ -66,7 +66,7 @@ jobs:
       number: ${{ steps.decide.outputs.number }}
       head-sha: ${{ steps.head.outputs.sha }}
     steps:
-      - uses: osac-project/osac-ci/.github/actions/e2e-decide@913227706083dc2093f5cf5c1d9c7fe58326877d  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-decide@9c62a9db9c6a57babc0e2986a802c360f05a5059  # osac-ci main
         id: decide
         with:
           github-token: ${{ github.token }}
