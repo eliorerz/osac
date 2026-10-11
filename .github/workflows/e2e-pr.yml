@@ -108,19 +108,20 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
+          NUMBER: ${{ steps.report.outputs.number }}
           DECISION: ${{ steps.decide.outputs.json-file }}
-          HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
-          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
-          [[ -n "${HEAD_REPO}" ]] || exit 0
           current=$(jq -r '.[0].head_sha' "${DECISION}")
-          prefix="E2E ${HEAD_REPO}:${HEAD_BRANCH} @ "
+          # The run title names the repository and branch of the event: the fork for a CI run, this repository for a
+          # run started by a review. Match both, from the pull request itself.
+          branch=$(gh api "repos/${REPO}/pulls/${NUMBER}" --jq '.head.ref')
+          head_repo=$(gh api "repos/${REPO}/pulls/${NUMBER}" --jq '.head.repo.full_name // empty')
           for status in queued waiting pending in_progress; do
             gh run list --repo "${REPO}" --workflow e2e-pr.yml --status "${status}" --limit 100 \
               --json databaseId,displayTitle \
-            | jq -r --arg prefix "${prefix}" --arg current "${current}" \
-                '.[] | select(.displayTitle | startswith($prefix)) | select(.displayTitle | endswith($current) | not) | .databaseId'
+            | jq -r --arg a "E2E ${REPO}:${branch} @ " --arg b "E2E ${head_repo}:${branch} @ " --arg current "${current}" \
+                '.[] | select((.displayTitle | startswith($a)) or (.displayTitle | startswith($b))) | select(.displayTitle | endswith($current) | not) | .databaseId'
           done | while read -r id; do
             echo "Cancelling run ${id}, which is for an older commit"
             gh run cancel "${id}" --repo "${REPO}" || echo "run ${id} already finished"
