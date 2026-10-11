@@ -70,7 +70,7 @@ jobs:
             .github/e2e-policy.yml
             .github/filters/ci-filters.yml
           persist-credentials: false
-      - uses: osac-project/osac-ci/.github/actions/e2e-decide@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-decide@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
         id: decide
         with:
           github-token: ${{ github.token }}
@@ -78,7 +78,7 @@ jobs:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
           number: ${{ inputs.number }}
           head-sha: ${{ github.event.workflow_run.head_sha }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-report@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-report@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
         id: report
         with:
           github-token: ${{ github.token }}
@@ -145,7 +145,7 @@ jobs:
         env:
           SUITES: ${{ needs.decide.outputs.suites }}
         run: echo "suites=$(jq -r 'join(",")' <<<"${SUITES}")" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
@@ -224,14 +224,14 @@ jobs:
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "suites=${suites}" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-finish@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-finish@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
           sha: ${{ needs.decide.outputs.sha }}
           result: ${{ steps.result.outputs.result }}
           detail: ${{ steps.result.outputs.suites }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@c6104d8ee802f669d466e156d2625b925c415c52  # osac-ci e2e-statuses
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
