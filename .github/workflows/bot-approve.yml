@@ -43,7 +43,7 @@ jobs:
       contents: read  # the action is fetched from osac-ci by the runner; nothing of this repository is checked out
       pull-requests: read  # read the pull request, its commits, files and reviews; the approval uses the bot's credential
     steps:
-      - uses: osac-project/osac-ci/.github/actions/bot-approve@b15215c0cc471449196f7bdba7687b69b9225069  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/bot-approve@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
         id: approve
         with:
           github-token: ${{ github.token }}

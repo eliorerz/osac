@@ -71,7 +71,7 @@ jobs:
             .github/e2e-policy.yml
             .github/filters/ci-filters.yml
           persist-credentials: false
-      - uses: osac-project/osac-ci/.github/actions/e2e-decide@91a2f36582b2cc571b2cdef75de5584d4ab08682  # osac-ci e2e-policy-file
+      - uses: osac-project/osac-ci/.github/actions/e2e-decide@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
         id: decide
         with:
           github-token: ${{ github.token }}
@@ -79,7 +79,7 @@ jobs:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
           number: ${{ inputs.number }}
           head-sha: ${{ github.event.workflow_run.head_sha }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-report@b15215c0cc471449196f7bdba7687b69b9225069  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-report@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
         id: report
         with:
           github-token: ${{ github.token }}
@@ -198,7 +198,7 @@ jobs:
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "suites=${suites}" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-finish@b15215c0cc471449196f7bdba7687b69b9225069  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-finish@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}

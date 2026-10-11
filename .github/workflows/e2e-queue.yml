@@ -33,7 +33,7 @@ jobs:
           BASE: ${{ github.event.merge_group.base_sha }}
           HEAD: ${{ github.event.merge_group.head_sha }}
         run: git diff --name-only "${BASE}" "${HEAD}" > "${RUNNER_TEMP}/changed-files"
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites@18ce29d62ebc2bf8e745231f9c4cd6dde74250c7  # osac-ci e2e-suites
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
         id: suites
         with:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
