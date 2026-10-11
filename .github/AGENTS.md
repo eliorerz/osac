@@ -14,7 +14,7 @@ plus a native approval on the head commit, and the merge queue.
   `helm-lint.yaml`, ...) and ends in the job `CI`. The reusable workflows hold no path logic; `ci.yml`'s `plan` job reads
   `filters/ci-filters.yml`. A new check needs a filter, a job in `ci.yml` and an entry in the `needs` of `CI`.
 - `workflows/e2e-pr.yml` decides, from the default branch with the repository token, when the full-install E2E starts for a
-  pull request and keeps the single `E2E` check run up to date: approved on the exact head commit by a person with write
+  pull request and keeps the single `E2E` status up to date (plus `E2E / VMaaS`, `CaaS`, `BMaaS` while a suite runs): approved on the exact head commit by a person with write
   access or CodeRabbit, `CI` passed, a suite affected (`e2e-policy.yml`). It checks out no pull request code (only the policy and
   filters of the default branch), and the suites it calls test the approved commit. `workflows/e2e-queue.yml` runs the
   suites for a merge queue entry. `workflows/e2e-review-relay.yml` only finishes, so a review wakes `e2e-pr.yml`.

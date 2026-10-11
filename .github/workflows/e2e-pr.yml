@@ -1,5 +1,5 @@
 ---
-# Runs the full-install E2E for a pull request, and keeps the pull request's one `E2E` check up to date from the first
+# Runs the full-install E2E for a pull request, and keeps the pull request's one `E2E` status up to date from the first
 # push to the result. The E2E takes about 100 minutes of a real cluster, so it starts only when it is allowed to:
 #
 #   * a person with write access, or CodeRabbit, has approved the exact head commit (a push drops the approval; a clean
@@ -7,11 +7,11 @@
 #   * the CI workflow passed on that commit, and
 #   * the change touches something an E2E suite tests (docs and the like need none).
 #
-# Until then the `E2E` check says what it waits for. A commit gets its E2E once: a re-run of the finished run from the
+# Until then the `E2E` status says what it waits for. A commit gets its E2E once: a re-run of the finished run from the
 # Actions page runs it again, and so does a new commit.
 #
 # Where the rules are: .github/e2e-policy.yml (the suites and the path filters that need them) and osac-ci (the
-# decision, and the check). Where the E2E itself is: the e2e-<suite>-full-install.yml workflows, one job each.
+# decision, and the status). Where the E2E itself is: the e2e-<suite>-full-install.yml workflows, one job each.
 #
 # This workflow starts when CI starts or finishes and when a review is submitted or dismissed (e2e-review-relay.yml). It
 # runs from the default branch with the repository's token and checks out nothing of the pull request, so a fork pull
@@ -54,13 +54,12 @@ jobs:
     permissions:
       contents: read  # check out the policy and the path filters of the default branch
       pull-requests: read  # the pull request, its reviews and files
-      checks: write  # the E2E check
+      statuses: write  # the E2E status
       actions: write  # cancel the E2E of an older commit of the same pull request
     outputs:
       start: ${{ steps.report.outputs.start }}
       sha: ${{ steps.report.outputs.sha }}
       number: ${{ steps.report.outputs.number }}
-      check-id: ${{ steps.report.outputs.check-id }}
       suites: ${{ steps.report.outputs.suites }}
       head-repo: ${{ steps.code.outputs.repo }}
     steps:
@@ -71,7 +70,7 @@ jobs:
             .github/e2e-policy.yml
             .github/filters/ci-filters.yml
           persist-credentials: false
-      - uses: osac-project/osac-ci/.github/actions/e2e-decide@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-decide@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
         id: decide
         with:
           github-token: ${{ github.token }}
@@ -79,7 +78,7 @@ jobs:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
           number: ${{ inputs.number }}
           head-sha: ${{ github.event.workflow_run.head_sha }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-report@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-report@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
         id: report
         with:
           github-token: ${{ github.token }}
@@ -127,18 +126,18 @@ jobs:
             gh run cancel "${id}" --repo "${REPO}" || echo "run ${id} already finished"
           done
 
-  # One check per suite on the pull request ("E2E / VMaaS" ...), next to the single E2E check: the suites run in this
+  # One status per suite on the pull request ("E2E / VMaaS" ...), next to the single E2E status: the suites run in this
   # workflow run, whose jobs are not on the pull request, so this is how a person on the pull request sees which suite
-  # is waiting, running or failed, and gets to its log. Only the suites that run get a check.
+  # is waiting, running or failed, and gets to its log in one click. Only the suites that run get a status.
   track:
-    name: Suite checks
+    name: Suite statuses
     needs: decide
     if: needs.decide.outputs.start == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 140
     permissions:
       contents: read
-      checks: write
+      statuses: write
       actions: read
     steps:
       - name: List the suites
@@ -146,7 +145,7 @@ jobs:
         env:
           SUITES: ${{ needs.decide.outputs.suites }}
         run: echo "suites=$(jq -r 'join(",")' <<<"${SUITES}")" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
@@ -194,7 +193,7 @@ jobs:
       sha: ${{ needs.decide.outputs.sha }}
       pr-number: ${{ needs.decide.outputs.number }}
 
-  # Runs whatever happened above, including a cancel, so the check never stays "running".
+  # Runs whatever happened above, including a cancel, so the status never stays "running".
   finish:
     name: Record the result
     needs: [decide, track, vmaas, caas, bmaas]
@@ -203,7 +202,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      checks: write
+      statuses: write
       actions: read
     steps:
       - name: Add up the suites
@@ -225,15 +224,14 @@ jobs:
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "suites=${suites}" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-finish@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-finish@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
           sha: ${{ needs.decide.outputs.sha }}
-          check-id: ${{ needs.decide.outputs.check-id }}
           result: ${{ steps.result.outputs.result }}
           detail: ${{ steps.result.outputs.suites }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@4dc96207e5b86780c062ee540110c8a2acc716f3  # osac-ci e2e-statuses
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}

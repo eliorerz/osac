@@ -18,7 +18,7 @@ checks are green and the approval is there, the author adds the pull request to 
 `CI` is one check. Open it to see which parts ran: a part your change does not touch shows as skipped inside that run,
 not as a separate check.
 
-`E2E` is one check too, and it always says why it is where it is:
+`E2E` is a status (a line on the pull request, not a job), and it always says why it is where it is:
 
 | The check says | What to do |
 |---|---|
@@ -46,7 +46,7 @@ signed) and only dependency files changed (`workflows/bot-approve.yml`). Anythin
   `ci-filters.yml`, add a job to `ci.yml` that runs when the filter matched, and add that job to the `needs` of `CI`.
 - **Which suites a change needs:** `e2e-policy.yml` (suite, and the filters that decide it). `e2e-pr.yml` and
   `e2e-queue.yml` read it; `e2e-pr.yml` reads it from the default branch, never from the pull request.
-- **The decision and the `E2E` check** (approval, CI result, the wording above) live in
+- **The decision and the `E2E` status** (approval, CI result, the wording above) live in
   [osac-project/osac-ci](https://github.com/osac-project/osac-ci). The workflows pin its actions to a full commit; bump
   the pin in a reviewed pull request.
 - **Emergency:** setting the repository variable `CI_GATING_ENABLED` to `false` makes `CI` run every part.
