@@ -71,7 +71,7 @@ jobs:
             .github/e2e-policy.yml
             .github/filters/ci-filters.yml
           persist-credentials: false
-      - uses: osac-project/osac-ci/.github/actions/e2e-decide@4636eac198f1fb7517e7a7e5e2ef20f1b22acecb  # osac-ci main
+      - uses: osac-project/osac-ci/.github/actions/e2e-decide@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
         id: decide
         with:
           github-token: ${{ github.token }}
@@ -79,7 +79,7 @@ jobs:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
           number: ${{ inputs.number }}
           head-sha: ${{ github.event.workflow_run.head_sha }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-report@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
+      - uses: osac-project/osac-ci/.github/actions/e2e-report@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
         id: report
         with:
           github-token: ${{ github.token }}
@@ -146,7 +146,7 @@ jobs:
         env:
           SUITES: ${{ needs.decide.outputs.suites }}
         run: echo "suites=$(jq -r 'join(",")' <<<"${SUITES}")" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
@@ -225,7 +225,7 @@ jobs:
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "suites=${suites}" >> "$GITHUB_OUTPUT"
-      - uses: osac-project/osac-ci/.github/actions/e2e-finish@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
+      - uses: osac-project/osac-ci/.github/actions/e2e-finish@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
@@ -233,7 +233,7 @@ jobs:
           check-id: ${{ needs.decide.outputs.check-id }}
           result: ${{ steps.result.outputs.result }}
           detail: ${{ steps.result.outputs.suites }}
-      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@41f1287cc6ac0495cb3c479ee9679b743bfe0b52  # osac-ci e2e-suite-checks
+      - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
         with:
           github-token: ${{ github.token }}
           repo: ${{ github.repository }}
