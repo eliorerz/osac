@@ -5,28 +5,27 @@ and automation changes may affect other components. Apply the repository-wide
 rules in [`../AGENTS.md`](../AGENTS.md), consider downstream effects, and
 follow the instructions for every affected component.
 
-## E2E readiness gate (OSAC-3370)
+## CI, E2E and merge rules
 
-Full-install e2e (`e2e-vmaas-full-install`, `e2e-bmaas-full-install`, `e2e-caas-full-install`) does **not** auto-spend runners on every PR push. Cheap `e2e-readiness` job waits (`ready=false`) until unlocked; required `e2e-*-gate` stays **pending** (not failed). Docs-only PRs skip readiness and the gate reports success.
+Read [`.github/CI.md`](CI.md) before changing a workflow. In short: three required checks (`CI`, `E2E`, `jira-reference`)
+plus a native approval on the head commit, and the merge queue.
 
-**Allow when any of:**
-- `lgtm` label present, or previously applied (Prow removes on push; prior `/lgtm` still unlocks later SHAs unless a human has `CHANGES_REQUESTED`)
-- `e2e-ready` label applied by `github-actions[bot]` via `/e2e-ready` (test-infra slash handler also `workflow_dispatch`es this repo's thin `e2e-on-label`, which `uses` the test-infra reusable; GITHUB_TOKEN cannot trigger `labeled` workflows; cleanup removes on push; manual UI labels are rejected)
-- `coderabbitai[bot]` `APPROVED` on the **exact current HEAD** (blocked while a human still has `CHANGES_REQUESTED`). Auto-start: same-repo via thin `e2e-on-approval` (`uses` test-infra `e2e-on-label`); forks via thin `e2e-on-approval-fork` (`uses` test-infra fork replay). `fork-handoff` stays a top-level job here so the replay gate can match it. `lgtm` / `/e2e-ready` still work. test-infra `e2e-start` never POSTs in_progress `e2e-*-gate` Checks API placeholders (they land on auto-queue / cancel-stale / ok-to-test). Required gates stay pending until native full-install jobs report.
-
-Human GitHub `APPROVED` does **not** unlock. `/ok-to-test` is fork **secrets** only (`authorize-fork-pr`); it does not unlock the cost gate. Fork PRs need `/ok-to-test` (or org membership) **and** one of CR / `lgtm` / `/e2e-ready`.
-
-Cheap checks stay ungated. Schedules / `workflow_dispatch` / `merge_group` skip the readiness job.
-
-Path filter skips docs / unit-test-only PRs (`!**/tests/**` and friends). `tests/e2e/**` is the full-install suite and **must** still set `should-run` (`e2e-suite` filter). Do not fold `tests/e2e` back into the ignore list.
-
-Details + smoke checklist: [`.github/e2e-readiness.md`](e2e-readiness.md).
-
-`workflows/e2e-start-dry-run.yml` is a dry run of the planned replacement for this gate. When the cheap workflows or a review
-finish it records, in the job summary and a JSON artifact, whether the E2E *would* start now (approved by a person with
-write access or CodeRabbit on the head commit, cheap checks passed, the change affects an E2E suite) and why not otherwise.
-It starts nothing; the label flow above still decides. The logic is in osac-project/osac-ci (`osac-ci e2e-decide`), pinned
-to a full commit SHA. Its `workflow_run` list names the cheap workflows by exact name: keep it in step when one is renamed.
+- `workflows/ci.yml` runs the cheap checks as reusable workflows (`unit-tests.yml`, `integration-tests.yml`,
+  `helm-lint.yaml`, ...) and ends in the job `CI`. The reusable workflows hold no path logic; `ci.yml`'s `plan` job reads
+  `filters/ci-filters.yml`. A new check needs a filter, a job in `ci.yml` and an entry in the `needs` of `CI`.
+- `workflows/e2e-pr.yml` decides, from the default branch with the repository token, when the full-install E2E starts for a
+  pull request and keeps the single `E2E` check run up to date: approved on the exact head commit by a person with write
+  access or CodeRabbit, `CI` passed, a suite affected (`e2e-policy.yml`). It checks out no pull request code (only the policy and
+  filters of the default branch), and the suites it calls test the approved commit. `workflows/e2e-queue.yml` runs the
+  suites for a merge queue entry. `workflows/e2e-review-relay.yml` only finishes, so a review wakes `e2e-pr.yml`.
+- The `e2e-<suite>-full-install.yml` workflows hold one job each, no gating; they run on a schedule (every 5 hours), by hand
+  and when called.
+- `workflow_run` lists workflows by exact name (`CI`, `E2E review relay` in `e2e-pr.yml`): keep the list in step when one is
+  renamed.
+- Path filters: `tests/e2e/**` is the full-install suite and must still make the E2E apply (`e2e-suite` filter). Do not fold
+  `tests/e2e` back into an ignore list.
+- No Prow labels (`/lgtm`, `/approve`, `/hold`, `/e2e-ready`, `/ok-to-test`) are read. Prow still sets `jira/valid-reference`
+  (the `jira-reference` check reads it) and runs the cherry-pick plugin.
 
 ## OSAC CI check
 
@@ -57,10 +56,10 @@ state descriptions live in [osac-project/osac-ci](https://github.com/osac-projec
 - `workflows/osac-ci-refresh.yml` answers `/osac-ci refresh` from the pull request's author or an owner, member or
   collaborator: it recomputes the verdict from live state and posts it, for when a verdict is out of date. The comment
   only decides whether the job runs; keep it out of every script and keep the per-comment concurrency group.
-- `workflows/bot-approve-dry-run.yml` is a dry run of the planned automatic approval of Dependabot and Konflux pull requests.
-  For each one it records, in the job summary and a JSON artifact, whether a person is needed (a commit that is not the bot's
-  own, plain and signed, or a change to anything but dependency files) and why. It approves nothing. The logic is in
-  osac-project/osac-ci (`osac-ci bot-decide`), pinned to a full commit SHA.
+- `workflows/bot-approve.yml` approves Dependabot and Konflux pull requests as the osac-ci bot when no person needs to read
+  them (every commit the bot's own, plain and signed; only dependency files changed). The logic is in
+  osac-project/osac-ci (`osac-ci bot-decide`), pinned to a full commit SHA; the credential is the secret
+  `OSAC_CI_BOT_TOKEN` (Actions and Dependabot).
 - Changes to the files that define the checks (`.github/workflows`, `actions`, `scripts`, `filters`, `CODEOWNERS`,
   `.pre-commit-config.yaml`; Markdown in them excepted) need an approval from `@osac-project/wg-infra`. `CODEOWNERS` lists them and the OSAC CI
   policy applies the same list; keep both in step.

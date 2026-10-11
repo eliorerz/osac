@@ -1,0 +1,32 @@
+# Which full-install E2E suites a change needs. Read by e2e-pr.yml (pull requests) and e2e-queue.yml (merge queue)
+# through osac-ci; the path filters are the shared .github/filters/ci-filters.yml. e2e-pr.yml reads this file from the
+# default branch, never from the pull request, so a pull request cannot change which suites its own change needs.
+#
+# A suite is needed when ALL of its `filters` hold and at least ONE of its `filters_any` holds. The suite name is the
+# one e2e-pr.yml and e2e-queue.yml use to pick the workflow (e2e-<suite>-full-install.yml).
+version: 1
+repo: osac-project/osac
+
+path_filters:
+  mode: enforce
+  file: filters/ci-filters.yml
+
+jobs:
+  e2e-vmaas:
+    kind: e2e
+    check: e2e-vmaas
+    suite: vmaas
+    filters: [vmaas-outside-known-safe]
+    filters_any: [e2e-code, e2e-suite]
+  e2e-caas:
+    kind: e2e
+    check: e2e-caas
+    suite: caas
+    filters: [caas-outside-known-safe]
+    filters_any: [e2e-code, e2e-suite]
+  e2e-bmaas:
+    kind: e2e
+    check: e2e-bmaas
+    suite: bmaas
+    filters: [bmaas-outside-known-safe]
+    filters_any: [e2e-code, e2e-suite]

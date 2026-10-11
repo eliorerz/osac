@@ -17,12 +17,9 @@ ci-config:
   - '{.github/workflows/ci.yml,.github/filters/ci-filters.yml}'
 
 # --- E2E suite classification (vmaas/caas/bmaas) ---------------------------
-# No real per-suite filter exists in e2e-{vmaas,caas,bmaas}-full-install.yml
-# today -- all three currently share one identical, suite-agnostic `code`/
-# `e2e-suite` filter (see the bottom of this file) and always run together.
-# These *-clear filters are the first real per-suite classification, already
-# validated for 5+ days via jobs-selection.yml's informational comment
-# before this file existed. Copied verbatim from that file.
+# The *-clear filters attribute a change to one suite when the path says so
+# (the *-outside-known-safe filters below decide whether a suite is needed at
+# all; see .github/e2e-policy.yml).
 #
 # Each of the three "-clear" filters is ONE brace-alternation pattern, not a
 # flat list of separate alternatives -- with predicate-quantifier: 'every',
@@ -109,7 +106,7 @@ config-yaml-json:
 netris-relevant:
   - '{osac-aap/collections/ansible_collections/netris/**,osac-aap/collections/ansible_collections/agentless_net/**,tests/e2e/bmaas/regression/networking/**,fulfillment-service/**/*network_class*,proto/**/*network_class*}'
 
-# --- E2E full-install gating (should-run for e2e-{vmaas,caas,bmaas}-full-install.yml) ---
+# --- E2E full-install gating (used by .github/e2e-policy.yml) ---
 # Which changes need an E2E run. Deliberately NOT named `code`: that key
 # belongs to unit-tests.yml/integration-tests.yml and has different semantics
 # (no test-file exclusions).
@@ -145,25 +142,21 @@ e2e-suite:
   - 'tests/e2e/**'
 
 # --- E2E suite "provably irrelevant" allow-lists ---------------------------
-# NEW (not part of jobs-selection.yml's original set). These are the ONLY
-# source that may ever produce a real "skip" decision for an E2E suite (see
-# select-jobs.py's decide()) -- never AI judgment alone, at any confidence.
+# These are the ONLY source that may ever produce a "skip" decision for an E2E
+# suite -- never AI judgment alone, at any confidence.
 #
 # Each raw filter below is named for what it DETECTS: "outside-known-safe"
 # is true when at least one changed file falls OUTSIDE the reviewed set of
 # paths known to be provably irrelevant to that suite. Consumers must INVERT
 # it to get the actual "safe to skip" boolean:
-#   <suite>-exclusive-skip = (filter.outputs.<suite>-outside-known-safe != 'true')
+#   safe to skip = (filter.outputs.<suite>-outside-known-safe != 'true')
 # i.e. "found nothing outside the safe zone" == "safe to skip". This
 # indirection is deliberate: naming the raw filter for what it positively
 # detects (rather than a filter literally called "-exclusive-skip" whose
 # true/false is secretly backwards) avoids exactly the kind of inversion
 # bug that would be catastrophic here -- a flipped sign would turn "skip
 # only when provably safe" into "skip unless provably safe", i.e. skip by
-# default. Get the inversion right at the ONE place it's computed
-# (jobs-selection.yml's `changes` job outputs) and every downstream
-# consumer only ever sees the already-correctly-oriented `exclusive_skip`
-# boolean.
+# default. .github/e2e-policy.yml uses the filters in their positive form.
 #
 # Deliberately conservative -- narrower than it could be, on purpose:
 # - Every e2e-*-full-install.yml suite (vmaas/caas/bmaas) builds and deploys
@@ -325,10 +318,8 @@ darwin-keychain:
   - '{.github/workflows/darwin-keychain-tests.yml,fulfillment-service/internal/config/config_secret_store.go,fulfillment-service/internal/config/config_secret_store_darwin.go,fulfillment-service/internal/config/config_secret_store_darwin_test.go,fulfillment-service/internal/config/config_secret_store_other.go,fulfillment-service/internal/config/config_settings.go,fulfillment-service/internal/config/config_settings_test.go}'
 
 # --- Per-component unit/integration test narrowing -------------------------
-# Sourced verbatim from osac#1054 ("Scope unit/integration test jobs to
-# changed components"), merged 2026-09-16T21:12, reverted ~90min later by
-# #1058 purely to consolidate on jobs-selection.yml first -- not because
-# anything here was wrong. Cross-component edges are real Go module
+# Scopes the unit and integration test jobs to the changed components
+# (osac#1054). Cross-component edges are real Go module
 # dependencies traced from go.work + each component's go.mod
 # require/replace directives, not guesses: fulfillment-service imports
 # bare-metal-fulfillment-operator and osac-operator/api; osac-operator and
