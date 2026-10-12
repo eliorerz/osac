@@ -28,13 +28,9 @@ spec:
   - name: image-expires-after
     value: 5d
   - name: dockerfile
-    value: osac-metering/adapters/Containerfile.echo-adapter
+    value: adapters/Containerfile.echo-adapter
   - name: path-context
-    # Repo-root context (not osac-metering/) so go.work is reachable --
-    # needed for hermetic prefetch to resolve dependencies in the same mode
-    # (workspace) as the real build, confirmed live. See the Containerfile's
-    # own comment for the full story.
-    value: .
+    value: osac-metering
   - name: hermetic
     value: "true"
   - name: prefetch-input
@@ -173,6 +169,14 @@ spec:
         value: $(params.output-image).git
       - name: ociArtifactExpiresAfter
         value: $(params.image-expires-after)
+      # Limits the checkout fed to prefetch-dependencies and build-container
+      # to osac-metering/ only (this adapter has no dependency on proto/ or
+      # any other component), so the shared repo-root go.work genuinely
+      # doesn't exist in either one's view of the source tree -- avoids the
+      # workspace-vs-standalone dependency resolution mismatch that affects
+      # every other component sharing go.work.
+      - name: sparseCheckoutDirectories
+        value: osac-metering
       runAfter:
       - init
       taskRef:
