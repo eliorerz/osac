@@ -28,9 +28,13 @@ spec:
   - name: image-expires-after
     value: 5d
   - name: dockerfile
-    value: adapters/Containerfile.m360-adapter
+    value: osac-metering/adapters/Containerfile.m360-adapter
   - name: path-context
-    value: osac-metering
+    # Repo-root context (not osac-metering/) so go.work is reachable --
+    # needed for hermetic prefetch to resolve dependencies in the same mode
+    # (workspace) as the real build, confirmed live. See the Containerfile's
+    # own comment for the full story.
+    value: .
   - name: hermetic
     value: "true"
   - name: prefetch-input
