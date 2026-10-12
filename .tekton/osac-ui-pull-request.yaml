@@ -28,9 +28,11 @@ spec:
   - name: image-expires-after
     value: 5d
   - name: dockerfile
-    value: Containerfile
+    value: osac-ui/Containerfile
   - name: path-context
-    value: osac-ui
+    # Repo-root context (not osac-ui/) -- the Containerfile now copies
+    # go.work from the repo root, see its own comment for why.
+    value: .
   - name: hermetic
     value: "true"
   - name: prefetch-input

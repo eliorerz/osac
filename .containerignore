@@ -11,8 +11,19 @@
 !osac-operator/
 !osac-csi-driver/
 !osac-metering/
-!osac-ui/proxy/
 
 # Shared proto module: every Containerfile now COPYs proto/ for the single
 # generated Go tree at proto/gen/ that all components import.
 !proto/
+
+# osac-ui: full source, not just proxy/ -- its Containerfile now copies
+# go.work from the repo root too (see its own comment for why), which
+# requires repo-root build context. Re-exclude the same build artifacts
+# and secrets-bearing files osac-ui/.containerignore used to cover on its
+# own when it was a standalone build context.
+!osac-ui/
+osac-ui/**/node_modules
+osac-ui/**/dist
+osac-ui/**/tsconfig.tsbuildinfo
+osac-ui/.env
+osac-ui/.env.*

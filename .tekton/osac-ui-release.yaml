@@ -23,9 +23,11 @@ spec:
   - name: output-image
     value: quay.io/redhat-user-workloads/osac-tenant/osac-ui:{{revision}}
   - name: dockerfile
-    value: Containerfile
+    value: osac-ui/Containerfile
   - name: path-context
-    value: osac-ui
+    # Repo-root context (not osac-ui/) -- the Containerfile now copies
+    # go.work from the repo root, see its own comment for why.
+    value: .
   - name: build-source-image
     value: "true"
   pipelineSpec:
