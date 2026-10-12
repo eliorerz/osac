@@ -20,7 +20,15 @@ RUN if [ -f /cachi2/output/deps/generic/pnpm-9.15.9.tgz ]; then \
       npm install -g pnpm@9.15.9; \
     fi
 
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* tsconfig.base.json ./
+# .npmrc* (optional -- none committed to the repo) picks up Hermeto's
+# injected registry override (a local file:// path redirect) during a
+# hermetic build. Without it, `pnpm install` has no override for any
+# package not already in its local store, and falls back to the live
+# registry -- confirmed live via a real Konflux PR build failure where
+# most packages fetched fine via the artifact-registry-proxy, but a
+# cluster of specific packages failed with ENOTFOUND against
+# registry.npmjs.org directly.
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc* tsconfig.base.json ./
 COPY libs/i18n/package.json ./libs/i18n/
 COPY libs/types/package.json ./libs/types/
 COPY libs/ui-components/package.json ./libs/ui-components/

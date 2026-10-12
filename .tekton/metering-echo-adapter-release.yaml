@@ -23,9 +23,11 @@ spec:
   - name: output-image
     value: quay.io/redhat-user-workloads/osac-tenant/metering-echo-adapter:{{revision}}
   - name: dockerfile
-    value: adapters/Containerfile.echo-adapter
+    value: osac-metering/adapters/Containerfile.echo-adapter
   - name: path-context
-    value: osac-metering
+    # Repo-root context (not osac-metering/) -- the Containerfile now
+    # copies go.work from the repo root, see its own comment for why.
+    value: .
   - name: build-source-image
     value: "true"
   pipelineSpec:
