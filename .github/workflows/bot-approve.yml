@@ -1,6 +1,6 @@
 ---
-# Approves a dependency-update pull request (Dependabot, Konflux) when no person needs to read it, as the osac-ci bot
-# account. The answer is "approve" only when every commit is the bot's own, plain and signed, and every changed file is a
+# Approves a dependency-update pull request (Dependabot, Konflux) when no person needs to read it, as the OSAC CI app
+# (osac-ci[bot]). The answer is "approve" only when every commit is the bot's own, plain and signed, and every changed file is a
 # dependency file; a commit added by a person, a hand rebase, an "Update branch" merge, or a change to a workflow or a
 # script makes it refuse, and then a person approves as for any pull request (see osac-project/osac-ci, README,
 # "Approving dependency updates without a person"). The approval is made for the exact head commit that was checked, so a
@@ -9,8 +9,9 @@
 #
 # pull_request_target runs the workflow file from the default branch with the base repository's token (read-only here),
 # and nothing here checks out or runs pull request code: the decision comes from the API. The approval itself uses the
-# bot account's own credential, kept as a secret. For a pull request opened by Dependabot, GitHub gives the workflow the
-# Dependabot secrets, not the Actions ones, so the secret has to exist in both places.
+# OSAC CI app's own token, minted from the app's key (an organization secret). For a pull request opened by Dependabot,
+# GitHub gives the workflow the Dependabot secrets, not the Actions ones, so the key has to exist as an organization
+# Dependabot secret too.
 name: Bot approval
 on:  # zizmor: ignore[dangerous-triggers] -- no pull request code is checked out or run
   pull_request_target:
@@ -43,11 +44,20 @@ jobs:
       contents: read  # the action is fetched from osac-ci by the runner; nothing of this repository is checked out
       pull-requests: read  # read the pull request, its commits, files and reviews; the approval uses the bot's credential
     steps:
+      # The approval is made by the OSAC CI app (osac-ci[bot]), with a token that has the pull-request permission only and
+      # lasts an hour. The app is the organization's; its key is an organization secret.
+      - name: Token of the OSAC CI app, for the approval only
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: "4966101"
+          private-key: ${{ secrets.OSAC_CI_APP_PRIVATE_KEY }}
+          permission-pull-requests: write
       - uses: osac-project/osac-ci/.github/actions/bot-approve@9bff1f4e82efec3ac1e98149a24aa52a626a40ea  # osac-ci main
         id: approve
         with:
           github-token: ${{ github.token }}
-          approve-token: ${{ secrets.OSAC_CI_BOT_TOKEN }}
+          approve-token: ${{ steps.app-token.outputs.token }}
           repo: ${{ github.repository }}
           number: ${{ github.event.pull_request.number || inputs.number }}
       - name: Keep the decision
