@@ -1,5 +1,5 @@
 ---
-# Runs the full-install E2E for a pull request, and keeps the pull request's one `E2E` status up to date from the first
+# Runs the full-install E2E for a pull request, and keeps the pull request's one `E2E` check up to date from the first
 # push to the result. The E2E takes about 100 minutes of a real cluster, so it starts only when it is allowed to:
 #
 #   * a person with write access, or CodeRabbit, has approved the exact head commit (a push drops the approval; a clean
@@ -8,11 +8,11 @@
 #   * the change touches something an E2E suite tests (docs and the like need none).
 #
 # It does NOT wait for CI: the integration tests alone can take an hour, so the E2E runs in parallel with CI, and both
-# are required for the merge. Until the approval the `E2E` status says what it waits for. A commit gets its E2E once: a
+# are required for the merge. Until the approval the `E2E` check says what it waits for. A commit gets its E2E once: a
 # re-run of the finished run from the Actions page runs it again, and so does a new commit.
 #
 # Where the rules are: .github/e2e-policy.yml (the suites and the path filters that need them) and osac-ci (the
-# decision, and the status). Where the E2E itself is: the e2e-<suite>-full-install.yml workflows, one job each.
+# decision, and the check). Where the E2E itself is: the e2e-<suite>-full-install.yml workflows, one job each.
 #
 # This workflow starts when CI starts or finishes and when a review is submitted or dismissed or the pull request changes
 # between draft and ready (e2e-review-relay.yml). It runs from the default branch with the repository's token and checks
@@ -56,7 +56,7 @@ jobs:
     permissions:
       contents: read  # check out the policy and the path filters of the default branch
       pull-requests: read  # the pull request, its reviews and files
-      statuses: write  # the E2E status
+      checks: read  # the check runs of the head commit, for the decision
       actions: write  # cancel the E2E of an older commit of the same pull request
     outputs:
       start: ${{ steps.report.outputs.start }}
@@ -80,10 +80,23 @@ jobs:
           policy-file: ${{ github.workspace }}/.github/e2e-policy.yml
           number: ${{ inputs.number }}
           head-sha: ${{ github.event.workflow_run.head_sha }}
+      # The E2E lines are check runs of the OSAC CI app, which the pull request page draws (a spinner while they run, the
+      # exact names E2E and E2E / <Suite>). A check run written with this workflow's own token would be attached to
+      # whichever Actions check suite of the commit is oldest, and the page does not draw those. The token has the
+      # permissions this job needs and lasts an hour.
+      - name: Token of the OSAC CI app, for the E2E lines
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: "4966101"
+          private-key: ${{ secrets.OSAC_CI_APP_PRIVATE_KEY }}
+          permission-checks: write
+          permission-actions: read
       - uses: osac-project/osac-ci/.github/actions/e2e-report@ddf100410769076e222341e317acc11eb3715f35  # osac-ci main
         id: report
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          kind: checks
           repo: ${{ github.repository }}
           decision-file: ${{ steps.decide.outputs.json-file }}
       # The repository the commit lives in (a fork for a fork pull request), for the suites to check out.
@@ -128,28 +141,39 @@ jobs:
             gh run cancel "${id}" --repo "${REPO}" || echo "run ${id} already finished"
           done
 
-  # One status per suite on the pull request ("E2E / VMaaS" ...), next to the single E2E status: the suites run in this
+  # One check per suite on the pull request ("E2E / VMaaS" ...), next to the single E2E status: the suites run in this
   # workflow run, whose jobs are not on the pull request, so this is how a person on the pull request sees which suite
-  # is waiting, running or failed, and gets to its log in one click. Only the suites that run get a status.
+  # is waiting, running or failed, and gets to its log in one click. Only the suites that run get a check.
   track:
-    name: Suite statuses
+    name: Suite checks
     needs: decide
     if: needs.decide.outputs.start == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 140
     permissions:
       contents: read
-      statuses: write
-      actions: read
     steps:
       - name: List the suites
         id: list
         env:
           SUITES: ${{ needs.decide.outputs.suites }}
         run: echo "suites=$(jq -r 'join(",")' <<<"${SUITES}")" >> "$GITHUB_OUTPUT"
+      # The E2E lines are check runs of the OSAC CI app, which the pull request page draws (a spinner while they run, the
+      # exact names E2E and E2E / <Suite>). A check run written with this workflow's own token would be attached to
+      # whichever Actions check suite of the commit is oldest, and the page does not draw those. The token has the
+      # permissions this job needs and lasts an hour.
+      - name: Token of the OSAC CI app, for the E2E lines
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: "4966101"
+          private-key: ${{ secrets.OSAC_CI_APP_PRIVATE_KEY }}
+          permission-checks: write
+          permission-actions: read
       - uses: osac-project/osac-ci/.github/actions/e2e-suites-track@ddf100410769076e222341e317acc11eb3715f35  # osac-ci main
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          kind: checks
           repo: ${{ github.repository }}
           sha: ${{ needs.decide.outputs.sha }}
           suites: ${{ steps.list.outputs.suites }}
@@ -204,8 +228,6 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
-      statuses: write
-      actions: read
     steps:
       - name: Add up the suites
         id: result
@@ -226,16 +248,30 @@ jobs:
           fi
           echo "result=${result}" >> "$GITHUB_OUTPUT"
           echo "suites=${suites}" >> "$GITHUB_OUTPUT"
+      # The E2E lines are check runs of the OSAC CI app, which the pull request page draws (a spinner while they run, the
+      # exact names E2E and E2E / <Suite>). A check run written with this workflow's own token would be attached to
+      # whichever Actions check suite of the commit is oldest, and the page does not draw those. The token has the
+      # permissions this job needs and lasts an hour.
+      - name: Token of the OSAC CI app, for the E2E lines
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1  # v3.2.0
+        with:
+          app-id: "4966101"
+          private-key: ${{ secrets.OSAC_CI_APP_PRIVATE_KEY }}
+          permission-checks: write
+          permission-actions: read
       - uses: osac-project/osac-ci/.github/actions/e2e-finish@ddf100410769076e222341e317acc11eb3715f35  # osac-ci main
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          kind: checks
           repo: ${{ github.repository }}
           sha: ${{ needs.decide.outputs.sha }}
           result: ${{ steps.result.outputs.result }}
           detail: ${{ steps.result.outputs.suites }}
       - uses: osac-project/osac-ci/.github/actions/e2e-suites-settle@ddf100410769076e222341e317acc11eb3715f35  # osac-ci main
         with:
-          github-token: ${{ github.token }}
+          github-token: ${{ steps.app-token.outputs.token }}
+          kind: checks
           repo: ${{ github.repository }}
           sha: ${{ needs.decide.outputs.sha }}
           results: ${{ steps.result.outputs.suites }}

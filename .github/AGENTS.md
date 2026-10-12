@@ -14,7 +14,7 @@ plus a native approval on the head commit, and the merge queue.
   `helm-lint.yaml`, ...) and ends in the job `CI`. The reusable workflows hold no path logic; `ci.yml`'s `plan` job reads
   `filters/ci-filters.yml`. A new check needs a filter, a job in `ci.yml` and an entry in the `needs` of `CI`.
 - `workflows/e2e-pr.yml` decides, from the default branch with the repository token, when the full-install E2E starts for a
-  pull request and keeps the single `E2E` status up to date (plus `E2E / VMaaS`, `CaaS`, `BMaaS` while a suite runs): approved on the exact head commit by a person with write
+  pull request and keeps the single `E2E` check up to date (plus `E2E / VMaaS`, `CaaS`, `BMaaS` while a suite runs). The lines are check runs of the OSAC CI app (a token minted from the organization secrets `OSAC_CI_APP_ID` and `OSAC_CI_APP_PRIVATE_KEY`, with the checks permission), so the page draws them with a spinner; `E2E` is required from that app only: approved on the exact head commit by a person with write
   access or CodeRabbit, a suite affected (`e2e-policy.yml`), and no cheap check already failed. It does not wait for `CI`: the E2E runs in parallel with it and both are required for the merge. It checks out no pull request code (only the policy and
   filters of the default branch), and the suites it calls test the approved commit. `workflows/e2e-queue.yml` runs the
   suites for a merge queue entry. `workflows/e2e-review-relay.yml` only finishes, so a review wakes `e2e-pr.yml`.
