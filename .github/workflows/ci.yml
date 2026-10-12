@@ -10,7 +10,8 @@ name: CI
 # applied passed.
 #
 # The checks themselves are reusable workflows in this directory
-# (unit-tests.yml, integration-tests.yml, helm-lint.yaml, ...). They hold no
+# (helm-lint.yaml, build-image.yaml, ...); the unit and integration tests are legs of one matrix
+# (.github/ci-tests.yml, run by tests.yml). They hold no
 # path gating of their own. To add a check: create (or extend) its workflow,
 # add a filter for it to ci-filters.yml, add a job here, and add the job to
 # the `needs` of `CI`.
@@ -45,6 +46,8 @@ jobs:
       # wiring itself changed or the emergency override is on. Tested with
       # contains(changed, '|name|').
       changed: ${{ steps.pick.outputs.changed }}
+      # The unit and integration test legs this change needs (see .github/ci-tests.yml), as a JSON list for a matrix.
+      tests: ${{ steps.tests.outputs.tests }}
     steps:
       # dorny/paths-filter uses git diff on merge_group (not the PR Files API),
       # so the repository must be checked out with enough history for base..head.
@@ -73,6 +76,18 @@ jobs:
           fi
           echo "changed=|${names}|" >> "$GITHUB_OUTPUT"
           echo "Checks that apply: ${names//|/ }" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Pick the unit and integration tests
+        id: tests
+        env:
+          CHANGED: ${{ steps.pick.outputs.changed }}
+        run: |
+          set -euo pipefail
+          # A leg runs when every filter it names matched. Only the legs that run become jobs of this workflow run.
+          tests=$(yq -o=json -I=0 '.' .github/ci-tests.yml | jq -c --arg changed "${CHANGED}" '
+            [ .[] | select(all(.filters[]; . as $f | ($changed | contains("|" + $f + "|")))) ]')
+          echo "tests=${tests}" >> "$GITHUB_OUTPUT"
+          echo "Tests that run: $(jq -r 'map(.id) | join(", ") | if . == "" then "none" else . end' <<<"${tests}")" >> "$GITHUB_STEP_SUMMARY"
 
   # Run on every change: they look at the whole diff, not at one component.
   pre-commit:
@@ -158,25 +173,24 @@ jobs:
       id-token: write
     uses: ./.github/workflows/build-bmf-image.yaml
 
-  unit-tests:
-    name: Unit tests
+  # Every unit and integration test the change needs, one job per leg (a matrix built by `plan` from .github/ci-tests.yml).
+  # A test that is not needed has no job, so the pull request shows no skipped row for it.
+  tests:
+    name: ${{ matrix.id }}
     needs: plan
-    if: contains(needs.plan.outputs.changed, '|code|') || contains(needs.plan.outputs.changed, '|ui|')
+    if: needs.plan.outputs.tests != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.tests) }}
     permissions:
       contents: read
-    uses: ./.github/workflows/unit-tests.yml
+    uses: ./.github/workflows/tests.yml
     with:
-      changed: ${{ needs.plan.outputs.changed }}
-
-  integration-tests:
-    name: Integration tests
-    needs: plan
-    if: contains(needs.plan.outputs.changed, '|code|')
-    permissions:
-      contents: read
-    uses: ./.github/workflows/integration-tests.yml
-    with:
-      changed: ${{ needs.plan.outputs.changed }}
+      kind: ${{ matrix.kind }}
+      dir: ${{ matrix.dir || '' }}
+      cmd: ${{ matrix.cmd || '' }}
+      timeout: ${{ matrix.timeout || 360 }}
 
   # The one required check. It also runs when a check failed, and fails then;
   # a check that was skipped because it did not apply does not count against it.
@@ -194,8 +208,7 @@ jobs:
       - helm-lint
       - build-osac-operator
       - build-bare-metal-fulfillment-operator
-      - unit-tests
-      - integration-tests
+      - tests
     runs-on: ubuntu-latest
     permissions: {}
     steps:

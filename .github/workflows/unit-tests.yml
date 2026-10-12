@@ -14,10 +14,8 @@
 
 name: Unit Tests
 
-# ci.yml calls this (job unit-tests) on pull requests and in the merge queue,
-# passing `changed`: the filters from .github/filters/ci-filters.yml that
-# matched, as |code|unit-tests-fulfillment-service|...|. Empty (schedule,
-# manual run, nightly-build.yaml) runs every job.
+# The pull request and merge queue runs of the unit tests are legs of the matrix in ci.yml (see .github/ci-tests.yml and
+# tests.yml). This workflow runs EVERY unit leg on a schedule, by hand and from the nightly build.
 on:  # yamllint disable-line rule:truthy
   workflow_dispatch:
   # 2x/day (every 12h). Offset 13 minutes past the hour, not on the hour --
@@ -28,96 +26,44 @@ on:  # yamllint disable-line rule:truthy
   # don't all land on the same offset simultaneously.
   schedule:
     - cron: '13 */12 * * *'
-  # Invoked as a parallel "box" by nightly-build.yaml, and by ci.yml.
+  # Invoked as a parallel "box" by nightly-build.yaml.
   workflow_call:
-    inputs:
-      changed:
-        type: string
-        default: ''
 
 permissions:
   contents: read
 
 jobs:
-
-  run-unit-tests:
-    name: Run unit tests
-    if: inputs.changed == '' || (contains(inputs.changed, '|code|') && contains(inputs.changed, '|unit-tests-fulfillment-service|'))
+  plan:
+    name: Plan
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      tests: ${{ steps.legs.outputs.tests }}
     steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-go
-      with:
-        working-directory: fulfillment-service
-    - working-directory: fulfillment-service
-      run: |
-        ginkgo run --timeout 1h -r internal
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          sparse-checkout: .github/ci-tests.yml
+          persist-credentials: false
+      - name: Every unit leg
+        id: legs
+        run: |
+          set -euo pipefail
+          tests=$(yq -o=json -I=0 '.' .github/ci-tests.yml | jq -c '[ .[] | select(.group == "unit") ]')
+          echo "tests=${tests}" >> "$GITHUB_OUTPUT"
 
-  run-osac-metering-tests:
-    name: Run unit tests (osac-metering)
-    if: inputs.changed == '' || (contains(inputs.changed, '|code|') && contains(inputs.changed, '|unit-tests-osac-metering|'))
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-go
-      with:
-        working-directory: osac-metering/metering-service
-    - working-directory: osac-metering/metering-service
-      run: |
-        ginkgo run -r internal
-
-  run-osac-metering-adapters-tests:
-    name: Run unit tests (osac-metering/adapters)
-    if: inputs.changed == '' || (contains(inputs.changed, '|code|') && contains(inputs.changed, '|unit-tests-osac-metering-adapters|'))
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-go
-      with:
-        working-directory: osac-metering/adapters
-    - working-directory: osac-metering/adapters
-      run: |
-        ginkgo run -r .
-
-  run-osac-metering-schema-tests:
-    name: Run unit tests (osac-metering/schema)
-    if: inputs.changed == '' || (contains(inputs.changed, '|code|') && contains(inputs.changed, '|unit-tests-osac-metering-schema|'))
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        persist-credentials: false
-    - uses: ./.github/actions/setup-go
-      with:
-        working-directory: osac-metering/schema
-    - working-directory: osac-metering/schema
-      run: |
-        ginkgo run -r .
-
-  run-osac-ui-tests:
-    name: Run unit tests (osac-ui)
-    if: inputs.changed == '' || contains(inputs.changed, '|ui|')
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-      with:
-        persist-credentials: false
-    - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1  # v4.3.0
-      with:
-        run_install: false
-        package_json_file: osac-ui/package.json
-    - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
-      with:
-        node-version-file: osac-ui/package.json
-        cache: pnpm
-        cache-dependency-path: osac-ui/pnpm-lock.yaml
-    - working-directory: osac-ui
-      run: pnpm install --frozen-lockfile
-    - working-directory: osac-ui
-      run: pnpm test
+  tests:
+    name: ${{ matrix.id }}
+    needs: plan
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.plan.outputs.tests) }}
+    permissions:
+      contents: read
+    uses: ./.github/workflows/tests.yml
+    with:
+      kind: ${{ matrix.kind }}
+      dir: ${{ matrix.dir || '' }}
+      cmd: ${{ matrix.cmd || '' }}
+      timeout: ${{ matrix.timeout || 360 }}

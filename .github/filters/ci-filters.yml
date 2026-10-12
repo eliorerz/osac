@@ -229,13 +229,13 @@ bmaas-outside-known-safe:
   - '!tools/pr-notify/**'
 
 # --- Every other cheap-check category ------------------------------------
-# One filter (or a few) per workflow that ci.yml calls: unit-tests.yml,
-# integration-tests.yml, helm-lint.yaml, check-generated-code.yaml,
+# One filter (or a few) per check that ci.yml runs: the unit and integration
+# tests (legs of .github/ci-tests.yml, run by tests.yml), helm-lint.yaml, check-generated-code.yaml,
 # check-pull-request.yaml, build-image.yaml, build-bmf-image.yaml,
 # ansible-lint.yml and darwin-keychain-tests.yml.
 
-# The `code` filter gates every job of unit-tests.yml and integration-tests.yml
-# (together with the per-component filters below). Excludes osac-ui/** entirely: unit-tests.yml
+# The `code` filter gates every unit and integration test leg (together with
+# the per-component filters below, which .github/ci-tests.yml names). Excludes osac-ui/** entirely: unit-tests.yml
 # gates its own osac-ui job on the separate `ui` filter below instead, so an
 # osac-ui-only PR runs that job and skips every other job here, rather than
 # falling through to "nothing matched, skip everything".
@@ -257,7 +257,7 @@ code:
 # unit-tests.yml's own `ui` filter -- gates run-osac-ui-tests, which `code`
 # above deliberately excludes.
 ui:
-  - 'osac-ui/**'
+  - '{osac-ui/**,.github/workflows/tests.yml,.github/ci-tests.yml}'
 
 helm-osac-operator:
   - '{osac-operator/api/**,osac-operator/charts/**,osac-operator/config/crd/bases/**,osac-operator/hack/sync-helm-crds.py,osac-operator/Makefile,.github/workflows/helm-lint.yaml}'
@@ -331,17 +331,17 @@ darwin-keychain:
 # graphify ci-select effort: a real dependency silently absent from a
 # filter, causing a false skip.
 #
-# unit-tests.yml consumers:
+# Unit test legs:
 unit-tests-fulfillment-service:
-  - '{fulfillment-service/**,bare-metal-fulfillment-operator/**,osac-operator/api/**,proto/**,go.work,go.work.sum,.github/workflows/unit-tests.yml}'
+  - '{fulfillment-service/**,bare-metal-fulfillment-operator/**,osac-operator/api/**,proto/**,go.work,go.work.sum,.github/workflows/tests.yml,.github/ci-tests.yml}'
 unit-tests-osac-metering:
-  - '{osac-metering/metering-service/**,osac-metering/schema/**,proto/**,go.work,go.work.sum,.github/workflows/unit-tests.yml}'
+  - '{osac-metering/metering-service/**,osac-metering/schema/**,proto/**,go.work,go.work.sum,.github/workflows/tests.yml,.github/ci-tests.yml}'
 unit-tests-osac-metering-adapters:
-  - '{osac-metering/adapters/**,osac-metering/schema/**,go.work,go.work.sum,.github/workflows/unit-tests.yml}'
+  - '{osac-metering/adapters/**,osac-metering/schema/**,go.work,go.work.sum,.github/workflows/tests.yml,.github/ci-tests.yml}'
 unit-tests-osac-metering-schema:
-  - '{osac-metering/schema/**,go.work,go.work.sum,.github/workflows/unit-tests.yml}'
+  - '{osac-metering/schema/**,go.work,go.work.sum,.github/workflows/tests.yml,.github/ci-tests.yml}'
 
-# integration-tests.yml consumers. osac-installer/** is included on the
+# Integration test legs. osac-installer/** is included on the
 # first three: their jobs all run setup/tests via `make -C osac-installer
 # install-infra`/`make -C osac-installer test`, so an osac-installer-only
 # change (Makefile, infra chart) can break them despite touching none of
@@ -354,13 +354,13 @@ unit-tests-osac-metering-schema:
 # is deliberately left unscoped in the workflow itself -- it deploys the
 # full stack by design -- so no filter for it exists here.
 integration-tests-fulfillment-service:
-  - '{fulfillment-service/**,bare-metal-fulfillment-operator/**,osac-operator/**,proto/**,osac-installer/**,go.work,go.work.sum,.github/workflows/integration-tests.yml}'
+  - '{fulfillment-service/**,bare-metal-fulfillment-operator/**,osac-operator/**,proto/**,osac-installer/**,go.work,go.work.sum,.github/workflows/tests.yml,.github/ci-tests.yml}'
 integration-tests-osac-operator:
-  - '{osac-operator/**,bare-metal-fulfillment-operator/**,proto/**,osac-installer/**,go.work,go.work.sum,.github/workflows/integration-tests.yml}'
+  - '{osac-operator/**,bare-metal-fulfillment-operator/**,proto/**,osac-installer/**,go.work,go.work.sum,.github/workflows/tests.yml,.github/ci-tests.yml}'
 integration-tests-bare-metal-fulfillment-operator:
-  - '{bare-metal-fulfillment-operator/**,osac-operator/**,proto/**,osac-installer/**,go.work,go.work.sum,.github/workflows/integration-tests.yml}'
+  - '{bare-metal-fulfillment-operator/**,osac-operator/**,proto/**,osac-installer/**,go.work,go.work.sum,.github/workflows/tests.yml,.github/ci-tests.yml}'
 integration-tests-osac-aap:
-  - '{osac-aap/**,.github/workflows/integration-tests.yml}'
+  - '{osac-aap/**,.github/workflows/tests.yml,.github/ci-tests.yml}'
 
 # Claude/Codex component-hook smoke coverage. Keep this scoped to the shared
 # component hooks, their registrations, the Codex adapter, and the smoke test

@@ -10,8 +10,9 @@ follow the instructions for every affected component.
 Read [`.github/CI.md`](CI.md) before changing a workflow. In short: three required checks (`CI`, `E2E`, `jira-reference`)
 plus a native approval on the head commit, and the merge queue.
 
-- `workflows/ci.yml` runs the cheap checks as reusable workflows (`unit-tests.yml`, `integration-tests.yml`,
-  `helm-lint.yaml`, ...) and ends in the job `CI`. The reusable workflows hold no path logic; `ci.yml`'s `plan` job reads
+- `workflows/ci.yml` runs the cheap checks as reusable workflows (`helm-lint.yaml`, `build-image.yaml`, ...) and as
+  one matrix of unit and integration test legs (`ci-tests.yml` lists them, `workflows/tests.yml` runs a leg), and ends
+  in the job `CI`. A leg that is not needed has no job, so the pull request shows no skipped row for it. The reusable workflows hold no path logic; `ci.yml`'s `plan` job reads
   `filters/ci-filters.yml`. A new check needs a filter, a job in `ci.yml` and an entry in the `needs` of `CI`.
 - `workflows/e2e-pr.yml` decides, from the default branch with the repository token, when the full-install E2E starts for a
   pull request and keeps the single `E2E` status up to date (plus `E2E / VMaaS`, `CaaS`, `BMaaS` while a suite runs): approved on the exact head commit by a person with write
