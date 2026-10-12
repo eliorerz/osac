@@ -23,11 +23,9 @@ spec:
   - name: output-image
     value: quay.io/redhat-user-workloads/osac-tenant/osac-ui:{{revision}}
   - name: dockerfile
-    value: osac-ui/Containerfile
+    value: Containerfile
   - name: path-context
-    # Repo-root context (not osac-ui/) -- the Containerfile now copies
-    # go.work from the repo root, see its own comment for why.
-    value: .
+    value: osac-ui
   - name: build-source-image
     value: "true"
   pipelineSpec:
@@ -164,6 +162,13 @@ spec:
         value: $(params.output-image).git
       - name: ociArtifactExpiresAfter
         value: $(params.image-expires-after)
+      # Limits the checkout fed to prefetch-dependencies and build-container
+      # to osac-ui/ only, so the shared repo-root go.work genuinely doesn't
+      # exist in either one's view of the source tree -- avoids the
+      # workspace-vs-standalone dependency resolution mismatch that affects
+      # every other component sharing go.work.
+      - name: sparseCheckoutDirectories
+        value: osac-ui
       runAfter:
       - init
       taskRef:
