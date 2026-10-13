@@ -37,7 +37,9 @@ import (
 // dockerConfigJSON is a representative (fake) container registry pull secret payload.
 const dockerConfigJSON = `{"auths":{"registry.example.com":{"auth":"dGVzdDp0ZXN0"}}}`
 
-var _ = Describe("Cluster pull_secret_secret", Label("secrets", "cluster"), func() {
+// Serial: its BeforeEach gets or creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("Cluster pull_secret_secret", Label("secrets", "cluster"), Serial, func() {
 	var (
 		ctx                 context.Context
 		clustersClient      publicv1.ClustersClient

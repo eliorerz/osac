@@ -20,6 +20,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -258,7 +259,9 @@ var _ = Describe("Private ExternalIPPool CRUD", func() {
 		})
 	})
 
-	It("Rejects delete when IPs are allocated", func() {
+	// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+	// must not run concurrently with any other spec that also creates one.
+	It("Rejects delete when IPs are allocated", Serial, func() {
 		networkClassesClient := privatev1.NewNetworkClassesClient(tool.InternalView().AdminConn())
 		createReadyExternalIPNetworkClass(ctx, networkClassesClient)
 
@@ -355,7 +358,9 @@ var _ = Describe("Private ExternalIPPool CRUD", func() {
 	})
 })
 
-var _ = Describe("ExternalIP lifecycle", func() {
+// Serial: its BeforeEach creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("ExternalIP lifecycle", Serial, func() {
 	var (
 		ctx                      context.Context
 		networkClassesClient     privatev1.NetworkClassesClient
@@ -607,7 +612,9 @@ var _ = Describe("ExternalIP lifecycle", func() {
 
 // The installer integration target disables operator and fulfillment sync; delete
 // acknowledgements do not guarantee immediate NotFound responses in that mode.
-var _ = Describe("ExternalIPAttachment cross-resource validation", func() {
+// Serial: its BeforeEach creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("ExternalIPAttachment cross-resource validation", Serial, func() {
 	var (
 		ctx                      context.Context
 		networkClassesClient     privatev1.NetworkClassesClient
