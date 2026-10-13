@@ -49,14 +49,24 @@ on:
       skip_e2e:
         description: >-
           Skip e2e validation (vmaas/caas/bmaas) and publish anyway if
-          unit/integration/security tests pass.
+          security tests pass, along with unit/integration tests unless
+          those are also skipped via skip_unit/skip_integration.
         type: boolean
         default: false
         required: false
       skip_integration:
         description: >-
-          Skip integration tests and publish anyway if unit/security (and,
-          unless also skipped, e2e) tests pass.
+          Skip integration tests and publish anyway if security tests
+          pass, along with unit/e2e tests unless those are also skipped
+          via skip_unit/skip_e2e.
+        type: boolean
+        default: false
+        required: false
+      skip_unit:
+        description: >-
+          Skip unit tests and publish anyway if security tests pass,
+          along with integration/e2e tests unless those are also skipped
+          via skip_integration/skip_e2e.
         type: boolean
         default: false
         required: false
@@ -750,8 +760,10 @@ jobs:
   # them. Each `uses:` a local reusable workflow that already exists and
   # runs standalone on pull_request/schedule -- reused here rather than
   # duplicated, same reasoning as `build` reusing each component's own
-  # Makefile targets instead of inlining build steps. Unconditional in
-  # both modes -- a release doesn't skip any safety check nightly enforces.
+  # Makefile targets instead of inlining build steps. Unit and integration
+  # are independently skippable via skip_unit/skip_integration below
+  # (manual runs only); security (CodeQL) is unconditional in both modes --
+  # a release doesn't skip that safety check nightly enforces.
   # -------------------------------------------------------------------
   unit-tests:
     name: Unit tests
@@ -765,6 +777,12 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    # Skippable via the skip_unit input, same shape as skip_integration/
+    # skip_e2e below but independent of them: both callers pass this
+    # through from their own workflow_dispatch input; the nightly
+    # scheduled trigger never sets it, so the cron can never skip unit
+    # tests.
+    if: inputs.skip_unit != true
     uses: ./.github/workflows/unit-tests.yml
 
   integration-tests:
@@ -805,9 +823,9 @@ jobs:
   # from their own workflow_dispatch input; the nightly scheduled trigger
   # never sets it, so the cron can never skip e2e. promote-and-publish/
   # publish-umbrella below tolerate these being skipped as well as succeeded.
-  # Integration tests have their own, independent skip_integration input
-  # (see that job below); unit/security tests are NOT skippable by either
-  # input.
+  # Unit and integration tests have their own, independent skip_unit/
+  # skip_integration inputs (see those jobs above); security tests are
+  # NOT skippable by any input.
   # -------------------------------------------------------------------
   e2e-vmaas-test:
     name: E2E validation (vmaas)
@@ -904,9 +922,9 @@ jobs:
   #
   # `if:` (not just `needs:`) because a skipped job is not a `success()`
   # by GitHub's default job-gating -- explicitly tolerating skipped
-  # alongside success for the three e2e jobs (skip_e2e) and integration-
-  # tests (skip_integration) keeps unit/security tests hard-required in
-  # every case, on both modes.
+  # alongside success for unit tests (skip_unit), integration tests
+  # (skip_integration), and the three e2e jobs (skip_e2e) keeps security
+  # tests hard-required in every case, on both modes.
   # -------------------------------------------------------------------
   promote-and-publish:
     name: Promote and publish (${{ matrix.component }})
@@ -915,7 +933,7 @@ jobs:
       always() &&
       needs.prepare.result == 'success' &&
       needs.build.result == 'success' &&
-      needs.unit-tests.result == 'success' &&
+      contains(fromJSON('["success", "skipped"]'), needs.unit-tests.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.integration-tests.result) &&
       needs.security-tests.result == 'success' &&
       contains(fromJSON('["success", "skipped"]'), needs.e2e-vmaas-test.result) &&
@@ -1442,6 +1460,7 @@ jobs:
       env:
         SKIP_E2E: ${{ inputs.skip_e2e }}
         SKIP_INTEGRATION: ${{ inputs.skip_integration }}
+        SKIP_UNIT: ${{ inputs.skip_unit }}
       run: |
         set -euo pipefail
         source osac-installer/scripts/nightly-charts.sh
@@ -1451,11 +1470,13 @@ jobs:
         COMMIT_SHA=$(git rev-parse HEAD)
         TAG_MESSAGE="Nightly build ${VERSION}"
         [[ "${MODE}" == "release" ]] && TAG_MESSAGE="Release ${VERSION}"
-        # Only ever true on a manual workflow_dispatch run (see the e2e
-        # jobs' own `if:` guards) -- keep this visible in the tag's own
-        # history, not just the transient Slack message below.
+        # Only ever true on a manual workflow_dispatch run (see the e2e/
+        # integration-tests/unit-tests jobs' own `if:` guards) -- keep
+        # this visible in the tag's own history, not just the transient
+        # Slack message below.
         [[ "${SKIP_E2E}" == "true" ]] && TAG_MESSAGE="${TAG_MESSAGE} (e2e skipped: manual workflow_dispatch run)"
         [[ "${SKIP_INTEGRATION}" == "true" ]] && TAG_MESSAGE="${TAG_MESSAGE} (integration tests skipped: manual workflow_dispatch run)"
+        [[ "${SKIP_UNIT}" == "true" ]] && TAG_MESSAGE="${TAG_MESSAGE} (unit tests skipped: manual workflow_dispatch run)"
 
         if git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}" 2>/dev/null; then
           EXISTING_SHA=$(git rev-parse "${TAG}^{commit}")
@@ -1713,6 +1734,7 @@ jobs:
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SKIP_E2E: ${{ inputs.skip_e2e }}
         SKIP_INTEGRATION: ${{ inputs.skip_integration }}
+        SKIP_UNIT: ${{ inputs.skip_unit }}
       run: |
         set -euo pipefail
         source osac-installer/scripts/nightly-charts.sh
@@ -1726,13 +1748,14 @@ jobs:
         [[ "${MODE}" == "release" ]] && RUN_KIND="Release"
 
         # Only ever true on a manual workflow_dispatch run (see the e2e/
-        # integration-tests jobs' own `if:` guards) -- never silent: a
-        # release that skipped either must be obvious in the same place
-        # every other success is announced, not just in the tag
-        # message/run log.
+        # integration-tests/unit-tests jobs' own `if:` guards) -- never
+        # silent: a release that skipped any of these must be obvious in
+        # the same place every other success is announced, not just in
+        # the tag message/run log.
         declare -a SKIPPED=()
         [[ "${SKIP_E2E}" == "true" ]] && SKIPPED+=("e2e")
         [[ "${SKIP_INTEGRATION}" == "true" ]] && SKIPPED+=("integration")
+        [[ "${SKIP_UNIT}" == "true" ]] && SKIPPED+=("unit")
 
         HEADER_TEXT=":white_check_mark: ${RUN_KIND} ${VERSION} - Published"
         if [[ "${#SKIPPED[@]}" -gt 0 ]]; then
