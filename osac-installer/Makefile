@@ -30,6 +30,11 @@ SHELL := /usr/bin/env bash -o pipefail
 # Extra helm --set/--set-string args appended to install commands.
 EXTRA_HELM_ARGS ?=
 FULFILLMENT_GINKGO_ARGS ?=
+# Parallel Ginkgo processes for the main fulfillment-service suite. The three focused
+# re-runs (NetworkClass capability discovery/readiness, Service enablement) stay
+# single-process: each runs exactly one spec, so splitting it across processes buys
+# nothing but idle workers.
+FULFILLMENT_GINKGO_PROCS ?= 4
 MCP_TEST_ENABLED ?= false
 
 ifeq ($(MCP_TEST_ENABLED),true)
@@ -405,7 +410,7 @@ ifeq ($(SUITE),fulfillment)
 	$(MAKE) install-osac PLATFORM=$(PLATFORM) PROFILE=$(PROFILE) NS=$(NS) \
 		EXTRA_HELM_ARGS="--set service.images.service.repository=localhost/fulfillment-service --set service.images.service.tag=it --set service.images.service.pullPolicy=Never --set service.controller.sync=false --set operator.enabled=false --set operator.networkManagers.enabled=true --set global.networking.networkClass.enabled=false $(MCP_TEST_HELM_ARGS)"
 	@for f in ../fulfillment-service/it/crds/*.yaml; do kubectl apply --server-side --field-manager=helm --force-conflicts -f "$$f"; done
-	cd ../fulfillment-service && IT_MCP_DEPLOYED_URL="$(MCP_TEST_URL)" ginkgo run --timeout 1h15m -v --skip 'NetworkClass manager (capability discovery|readiness)' $(FULFILLMENT_GINKGO_ARGS) it
+	cd ../fulfillment-service && IT_MCP_DEPLOYED_URL="$(MCP_TEST_URL)" ginkgo run --timeout 1h15m -v --procs=$(FULFILLMENT_GINKGO_PROCS) --skip 'NetworkClass manager (capability discovery|readiness)' $(FULFILLMENT_GINKGO_ARGS) it
 	$(MAKE) install-osac PLATFORM=$(PLATFORM) PROFILE=$(PROFILE) NS=$(NS) \
 		EXTRA_HELM_ARGS="--set service.images.service.repository=localhost/fulfillment-service --set service.images.service.tag=it --set service.images.service.pullPolicy=Never --set service.controller.sync=false --set operator.enabled=true --set operator.image.repository=localhost/osac-operator --set operator.image.tag=it --set operator.image.pullPolicy=Never --set operator.networkManagers.enabled=true --set global.networking.networkClass.enabled=false"
 	cd ../fulfillment-service && ginkgo run --timeout 1h -v --focus 'NetworkClass manager capability discovery' it

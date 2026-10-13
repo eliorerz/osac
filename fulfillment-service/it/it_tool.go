@@ -473,6 +473,11 @@ func (t *Tool) runCommand(ctx context.Context, name string, args ...string) ([]b
 func (t *Tool) resolveRandomSecret(ctx context.Context) error {
 	t.logger.DebugContext(ctx, "Resolving secret")
 
+	// Remember whether the secret was explicitly provided (as opposed to one we are about to generate), so that the
+	// mismatch check below only fires for an explicitly provided value and not for a generated candidate that lost
+	// the create race against another parallel Ginkgo process:
+	providedSecret := t.secret
+
 	// Try to fetch the current secret from the cluster:
 	secretKey := crclient.ObjectKey{
 		Namespace: "default",
@@ -487,7 +492,9 @@ func (t *Tool) resolveRandomSecret(ctx context.Context) error {
 		)
 	}
 
-	// If the secret didn't exist then generate a new one if needed, and save it to the cluster:
+	// If the secret didn't exist then generate a new one if needed, and save it to the cluster. Another parallel
+	// Ginkgo process may win the race to create it first, in which case we fall through and read back whatever it
+	// wrote instead of failing:
 	if apierrors.IsNotFound(err) {
 		if t.secret == "" {
 			t.secret = uuid.New()
@@ -502,13 +509,22 @@ func (t *Tool) resolveRandomSecret(ctx context.Context) error {
 			},
 		}
 		err = t.kubeClient.Create(ctx, secretObject)
-		if err != nil {
+		if err != nil && !apierrors.IsAlreadyExists(err) {
 			return fmt.Errorf(
 				"failed to create random secret '%s/%s': %w",
 				randomSecretNamespace, randomSecretName, err,
 			)
 		}
-		return nil
+		if err == nil {
+			return nil
+		}
+		err = t.kubeClient.Get(ctx, secretKey, secretObject)
+		if err != nil {
+			return fmt.Errorf(
+				"failed to get random secret '%s/%s' after losing the create race: %w",
+				randomSecretNamespace, randomSecretName, err,
+			)
+		}
 	}
 
 	// Make sure that the secret loaded from the cluster does contain the expected key and that it matches the one
@@ -521,10 +537,10 @@ func (t *Tool) resolveRandomSecret(ctx context.Context) error {
 		)
 	}
 	secretText := string(secretBytes)
-	if t.secret != "" && t.secret != secretText {
+	if providedSecret != "" && providedSecret != secretText {
 		return fmt.Errorf(
 			"secret '%s/%s' has changed from '%s' to '%s'",
-			randomSecretNamespace, randomSecretName, t.secret, secretText,
+			randomSecretNamespace, randomSecretName, providedSecret, secretText,
 		)
 	}
 
