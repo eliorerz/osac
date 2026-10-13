@@ -207,67 +207,15 @@ func (b *ToolBuilder) findProjectDir() (result string, err error) {
 // Setup prepares the integration test environment. Assumes a pre-existing Kind cluster with
 // infrastructure (cert-manager, Keycloak, Envoy Gateway) and OSAC services already deployed
 // via `make dev-env`. Creates test users, tenants, service accounts, and gRPC/HTTP clients.
+//
+// This is the full setup, intended for the primary Ginkgo process only when running with
+// --procs > 1 (see SetupFollower). Keycloak's user-management endpoints return intermittent
+// 500s when multiple processes concurrently create or reset the same user's password, and the
+// cluster-wide test tenants and hub registration must not be created more than once.
 func (t *Tool) Setup(ctx context.Context) error {
-	var err error
-
-	// Check that the required host names are resolvable:
-	err = t.checkAddress(ctx, keycloakAddr)
+	err := t.connectToCluster(ctx)
 	if err != nil {
 		return err
-	}
-	err = t.checkAddress(ctx, externalServiceAddr)
-	if err != nil {
-		return err
-	}
-	err = t.checkAddress(ctx, internalServiceAddr)
-	if err != nil {
-		return err
-	}
-
-	// Create a temporary directory:
-	t.tmpDir, err = os.MkdirTemp("", "*.it")
-	if err != nil {
-		return fmt.Errorf("failed to create temporary directory: %w", err)
-	}
-
-	// Check that the required command line tools are available:
-	err = t.checkCommands(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Build the CLI binary:
-	err = t.buildCLI(ctx)
-	if err != nil {
-		return err
-	}
-
-	// Connect to the pre-existing Kind cluster:
-	t.clusterName = os.Getenv("KIND_CLUSTER")
-	if t.clusterName == "" {
-		t.clusterName = "osac-dev"
-	}
-	t.kcFile = os.Getenv("KUBECONFIG")
-	if t.kcFile == "" {
-		t.kcFile = filepath.Join(os.Getenv("HOME"), ".kube", t.clusterName+"-kind.kubeconfig")
-	}
-
-	// Create the Kubernetes clients from the kubeconfig:
-	restConfig, err := clientcmd.BuildConfigFromFlags("", t.kcFile)
-	if err != nil {
-		return fmt.Errorf("failed to build rest config from kubeconfig: %w", err)
-	}
-	scheme := runtime.NewScheme()
-	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
-	utilruntime.Must(osacv1alpha1.AddToScheme(scheme))
-	utilruntime.Must(bmfov1alpha1.AddToScheme(scheme))
-	t.kubeClient, err = crclient.New(restConfig, crclient.Options{Scheme: scheme})
-	if err != nil {
-		return fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-	t.kubeClientSet, err = kubernetes.NewForConfig(restConfig)
-	if err != nil {
-		return fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
 
 	// Resolve the secret to use for passwords and credentials:
@@ -354,6 +302,113 @@ func (t *Tool) Setup(ctx context.Context) error {
 	// Register the hub:
 	if err = t.registerHub(ctx); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+// SetupFollower prepares the integration test environment for a Ginkgo parallel process other
+// than the primary (see TestIntegration's SynchronizedBeforeSuite in it_suite_test.go). The
+// primary process has already created the Keycloak test users and organizations, test tenants,
+// hub namespace, and hub registration via Setup; this connects to that already-ready shared state
+// instead of racing to recreate it. The secret must already be set (via SetSecret) to the value
+// the primary process resolved.
+func (t *Tool) SetupFollower(ctx context.Context) error {
+	err := t.connectToCluster(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Load the CA bundle:
+	err = t.loadCaBundle(ctx)
+	if err != nil {
+		return err
+	}
+	if endpoint := os.Getenv("IT_MCP_DEPLOYED_URL"); endpoint != "" {
+		if err := t.waitForMCPReady(ctx, endpoint); err != nil {
+			return err
+		}
+	}
+
+	// Create the gRPC and HTTP clients, authenticating against the Keycloak users the primary
+	// process already created:
+	err = t.createClients(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Wait for the servers to be ready:
+	err = t.waitForServersReady(ctx)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// connectToCluster performs the environment preparation steps common to both the primary
+// process's full Setup and a follower process's lighter SetupFollower: verifying the required
+// hostnames and command-line tools are available, building the CLI binary, and connecting to the
+// pre-existing Kind cluster.
+func (t *Tool) connectToCluster(ctx context.Context) error {
+	// Check that the required host names are resolvable:
+	err := t.checkAddress(ctx, keycloakAddr)
+	if err != nil {
+		return err
+	}
+	err = t.checkAddress(ctx, externalServiceAddr)
+	if err != nil {
+		return err
+	}
+	err = t.checkAddress(ctx, internalServiceAddr)
+	if err != nil {
+		return err
+	}
+
+	// Create a temporary directory:
+	t.tmpDir, err = os.MkdirTemp("", "*.it")
+	if err != nil {
+		return fmt.Errorf("failed to create temporary directory: %w", err)
+	}
+
+	// Check that the required command line tools are available:
+	err = t.checkCommands(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Build the CLI binary:
+	err = t.buildCLI(ctx)
+	if err != nil {
+		return err
+	}
+
+	// Connect to the pre-existing Kind cluster:
+	t.clusterName = os.Getenv("KIND_CLUSTER")
+	if t.clusterName == "" {
+		t.clusterName = "osac-dev"
+	}
+	t.kcFile = os.Getenv("KUBECONFIG")
+	if t.kcFile == "" {
+		t.kcFile = filepath.Join(os.Getenv("HOME"), ".kube", t.clusterName+"-kind.kubeconfig")
+	}
+
+	// Create the Kubernetes clients from the kubeconfig:
+	restConfig, err := clientcmd.BuildConfigFromFlags("", t.kcFile)
+	if err != nil {
+		return fmt.Errorf("failed to build rest config from kubeconfig: %w", err)
+	}
+	scheme := runtime.NewScheme()
+	utilruntime.Must(clientgoscheme.AddToScheme(scheme))
+	utilruntime.Must(osacv1alpha1.AddToScheme(scheme))
+	utilruntime.Must(bmfov1alpha1.AddToScheme(scheme))
+	t.kubeClient, err = crclient.New(restConfig, crclient.Options{Scheme: scheme})
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes client: %w", err)
+	}
+	t.kubeClientSet, err = kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return fmt.Errorf("failed to create kubernetes clientset: %w", err)
 	}
 
 	return nil
@@ -1756,7 +1811,10 @@ func (t *Tool) LoginCLI(ctx context.Context, homeDir, user, password string) (st
 	)
 }
 
-func (t *Tool) Cleanup(ctx context.Context) error {
+// Cleanup tears down the tool's own connections and temporary files. dumpLogs should be true for
+// at most one Ginkgo process (the primary, see SetupFollower): "kind export logs" writes to a
+// fixed, shared directory, so multiple parallel processes dumping concurrently would race on it.
+func (t *Tool) Cleanup(ctx context.Context, dumpLogs bool) error {
 	var errs []error
 
 	// Close gRPC views:
@@ -1774,10 +1832,12 @@ func (t *Tool) Cleanup(ctx context.Context) error {
 	}
 
 	// Dump the logs:
-	logsDir := filepath.Join(t.projectDir, "logs")
-	_, dumpErr := t.runCommand(ctx, "kind", "export", "logs", logsDir, "--name", t.clusterName)
-	if dumpErr != nil {
-		errs = append(errs, fmt.Errorf("failed to dump cluster logs: %w", dumpErr))
+	if dumpLogs {
+		logsDir := filepath.Join(t.projectDir, "logs")
+		_, dumpErr := t.runCommand(ctx, "kind", "export", "logs", logsDir, "--name", t.clusterName)
+		if dumpErr != nil {
+			errs = append(errs, fmt.Errorf("failed to dump cluster logs: %w", dumpErr))
+		}
 	}
 
 	// Remove temporary directory:

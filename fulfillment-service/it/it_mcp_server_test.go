@@ -24,6 +24,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/ghttp"
 	"google.golang.org/grpc"
@@ -40,7 +41,9 @@ import (
 	publicv1 "github.com/osac-project/osac/proto/gen/osac/public/v1"
 )
 
-var _ = Describe("MCP server", func() {
+// Serial: its BeforeEach creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("MCP server", Serial, func() {
 	var (
 		ctx                            context.Context
 		catalogItemsClient             privatev1.ComputeInstanceCatalogItemsClient

@@ -21,6 +21,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -41,7 +42,9 @@ import (
 // method (ssh_public_key or user_data) at create time.
 const bmiTestSSHPublicKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIG8K1ZuSC7tmzxD5LJJXwkCfStVEjzXWYCFhJaLBxWAn test@example.com"
 
-var _ = Describe("BareMetalInstance lifecycle", func() {
+// Serial: its BeforeEach creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("BareMetalInstance lifecycle", Serial, func() {
 	var (
 		bareMetalInstancesClient            publicv1.BareMetalInstancesClient
 		privateBareMetalInstancesClient     privatev1.BareMetalInstancesClient

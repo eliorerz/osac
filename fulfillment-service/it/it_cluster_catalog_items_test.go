@@ -31,7 +31,9 @@ import (
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("Cluster Catalog Items", Label("catalog-items"), func() {
+// Serial: most specs here create a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("Cluster Catalog Items", Label("catalog-items"), Serial, func() {
 	Context("Provisioning and field governance", func() {
 		It("resolves typed fields and atomic node maps from the request or catalog policy", func(ctx context.Context) {
 			By("authoring a tenant offering with network and node-set policies")

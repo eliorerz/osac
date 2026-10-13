@@ -225,7 +225,9 @@ func expectNoExternalIPPoolNamed(ctx context.Context, client privatev1.ExternalI
 	}
 }
 
-var _ = Describe("IPv4-only VirtualNetwork gRPC contract", func() {
+// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+// must not run concurrently with any other spec that also creates one.
+var _ = Describe("IPv4-only VirtualNetwork gRPC contract", Serial, func() {
 	var (
 		ctx    context.Context
 		client privatev1.VirtualNetworksClient
@@ -354,7 +356,9 @@ var _ = Describe("IPv4-only VirtualNetwork gRPC contract", func() {
 	})
 })
 
-var _ = Describe("IPv4-only Subnet gRPC contract", func() {
+// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+// must not run concurrently with any other spec that also creates one.
+var _ = Describe("IPv4-only Subnet gRPC contract", Serial, func() {
 	var (
 		ctx    context.Context
 		client privatev1.SubnetsClient
@@ -450,7 +454,9 @@ var _ = Describe("IPv4-only Subnet gRPC contract", func() {
 	})
 })
 
-var _ = Describe("IPv4-only SecurityGroup gRPC contract", func() {
+// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+// must not run concurrently with any other spec that also creates one.
+var _ = Describe("IPv4-only SecurityGroup gRPC contract", Serial, func() {
 	var (
 		ctx    context.Context
 		client privatev1.SecurityGroupsClient
@@ -684,7 +690,9 @@ var _ = Describe("IPv4-only ExternalIPPool gRPC contract", func() {
 	})
 })
 
-var _ = Describe("IPv4-only controller endpoint gRPC contract", Label("ipv4-networking"), func() {
+// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+// must not run concurrently with any other spec that also creates one.
+var _ = Describe("IPv4-only controller endpoint gRPC contract", Label("ipv4-networking"), Serial, func() {
 	It("validates endpoint addresses before persistence and preserves accepted status", func(ctx context.Context) {
 		internal := privatev1.NewClustersClient(tool.InternalView().AdminConn())
 		fields := []struct {

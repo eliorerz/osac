@@ -23,6 +23,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc"
 	grpccodes "google.golang.org/grpc/codes"
@@ -817,7 +818,9 @@ var _ = Describe("Tenant edge cases and resilience", func() {
 	})
 })
 
-var _ = Describe("Multi-tenant resource isolation", func() {
+// Serial: its BeforeEach creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("Multi-tenant resource isolation", Serial, func() {
 	var (
 		tenantsClient      privatev1.TenantsClient
 		vnAdminClient      privatev1.VirtualNetworksClient

@@ -33,7 +33,9 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 )
 
-var _ = Describe("Compute Instance Catalog Items", Label("catalog-items"), func() {
+// Serial: most specs here create a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("Compute Instance Catalog Items", Label("catalog-items"), Serial, func() {
 	Context("Provisioning and field governance", func() {
 		It("materializes typed policies before Template defaults and persists explicit scalar presence", func(ctx context.Context) {
 			By("creating a tenant catalog item that fixes some VM settings and lets users choose others")

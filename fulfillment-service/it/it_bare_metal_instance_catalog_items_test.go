@@ -31,7 +31,9 @@ import (
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("Bare Metal Instance Catalog Items", Label("catalog-items"), func() {
+// Serial: most specs here create a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("Bare Metal Instance Catalog Items", Label("catalog-items"), Serial, func() {
 	Context("Provisioning and field governance", func() {
 		It("materializes bare metal instance typed policies and replaces editable attachments", func(ctx context.Context) {
 			By("creating a tenant catalog item with hardware, image, and network policies")

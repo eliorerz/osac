@@ -27,7 +27,9 @@ import (
 	crclient "sigs.k8s.io/controller-runtime/pkg/client"
 )
 
-var _ = Describe("Catalog Item CLI", Label("catalog-items", "cli"), func() {
+// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+// must not run concurrently with any other spec that also creates one.
+var _ = Describe("Catalog Item CLI", Label("catalog-items", "cli"), Serial, func() {
 	DescribeTable("creates a VM with the CLI from a catalog item or a Template", func(ctx context.Context, createFromCatalogItem bool) {
 		home, err := tool.NewCLIHomeDir()
 		Expect(err).NotTo(HaveOccurred())

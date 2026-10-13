@@ -18,6 +18,7 @@ import (
 	"fmt"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
 	grpccodes "google.golang.org/grpc/codes"
 	grpcstatus "google.golang.org/grpc/status"
@@ -28,7 +29,9 @@ import (
 	publicv1 "github.com/osac-project/osac/proto/gen/osac/public/v1"
 )
 
-var _ = Describe("Public clusters", func() {
+// Serial: its BeforeEach gets or creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("Public clusters", Serial, func() {
 	var (
 		ctx                 context.Context
 		clustersClient      publicv1.ClustersClient

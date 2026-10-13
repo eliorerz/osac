@@ -20,6 +20,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
@@ -29,7 +30,9 @@ import (
 	publicv1 "github.com/osac-project/osac/proto/gen/osac/public/v1"
 )
 
-var _ = Describe("DiskImage lifecycle", func() {
+// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+// must not run concurrently with any other spec that also creates one.
+var _ = Describe("DiskImage lifecycle", Serial, func() {
 	// testCredential is a dummy credential used only for the fake StorageBackend
 	// created within this suite; it never authenticates against a real service.
 	const testCredential = "test-credential" //nolint:goconst // test-only dummy credential for fake provider

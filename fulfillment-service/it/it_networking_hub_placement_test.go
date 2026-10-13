@@ -23,6 +23,7 @@ import (
 	"time"
 
 	. "github.com/onsi/ginkgo/v2/dsl/core"
+	. "github.com/onsi/ginkgo/v2/dsl/decorators"
 	. "github.com/onsi/gomega"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -46,7 +47,9 @@ import (
 // This fixture gives the Hub cache two valid entries with distinct target
 // namespaces on the component test cluster. It exercises canonical Hub entry
 // and namespace routing; it does not model isolation between separate clusters.
-var _ = Describe("Canonical networking Hub cache-entry routing", func() {
+// Serial: creates a NetworkClass, which the server allows only one of per deployment, so this
+// must not run concurrently with any other spec that also creates one.
+var _ = Describe("Canonical networking Hub cache-entry routing", Serial, func() {
 	It("places all networking CR families on the canonical Hub when an alternate Hub is available", func(ctx context.Context) {
 		hubsClient := privatev1.NewHubsClient(tool.InternalView().AdminConn())
 		hubAResponse, err := hubsClient.Get(ctx, privatev1.HubsGetRequest_builder{Id: hubId}.Build())

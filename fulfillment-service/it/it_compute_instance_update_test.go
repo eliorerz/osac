@@ -63,7 +63,9 @@ func setComputeInstanceTestFinalizer(ctx context.Context, client privatev1.Compu
 	}, timeout, 100*time.Millisecond).Should(BeTrue())
 }
 
-var _ = Describe("Compute instance updates", Label("compute-updates"), func() {
+// Serial: every spec here creates a NetworkClass, which the server allows only one of per
+// deployment, so this must not run concurrently with any other spec that also creates one.
+var _ = Describe("Compute instance updates", Label("compute-updates"), Serial, func() {
 	It("rejects public updates that change network attachments", func(ctx context.Context) {
 		network := createCatalogItemNetworkFixture(ctx, usersGroup, "")
 		template := createCatalogItemComputeInstanceProvisioningTemplateFixture(ctx, nil)

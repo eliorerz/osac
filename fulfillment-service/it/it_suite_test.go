@@ -15,6 +15,7 @@ package it
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"testing"
 
@@ -49,39 +50,57 @@ var (
 	tool   *Tool
 )
 
+// primarySetupResult is broadcast from Ginkgo's primary parallel process to every other process
+// (see SynchronizedBeforeSuite below), so they can connect to the shared state the primary
+// process already created instead of racing to recreate it.
+type primarySetupResult struct {
+	Secret       string `json:"secret"`
+	HubID        string `json:"hub_id"`
+	HubNamespace string `json:"hub_namespace"`
+}
+
 func TestIntegration(t *testing.T) {
 	RegisterFailHandler(Fail)
 	RunSpecs(t, "Integration")
 }
 
-var _ = BeforeSuite(func() {
-	var err error
-
-	// Create a context:
-	ctx := context.Background()
-
-	// Create the logger:
-	logger, err = logging.NewLogger().
+func newLogger() *slog.Logger {
+	result, err := logging.NewLogger().
 		SetWriter(GinkgoWriter).
 		SetLevel(slog.LevelDebug.String()).
 		Build()
 	Expect(err).ToNot(HaveOccurred())
 
 	// Configure the Kubernetes libraries to use our logger:
-	logrLogger := logr.FromSlogHandler(logger.Handler())
+	logrLogger := logr.FromSlogHandler(result.Handler())
 	crlog.SetLogger(logrLogger)
 	klog.SetLogger(logrLogger)
 
-	// Load configuration from environment variables:
-	config = &Config{}
-	err = envconfig.Process("it", config)
-	Expect(err).ToNot(HaveOccurred())
-	logger.Info(
-		"Configuration",
-		slog.String("!secret", config.Secret),
-	)
+	return result
+}
 
-	// Create and setup the tool:
+func loadConfig() *Config {
+	result := &Config{}
+	err := envconfig.Process("it", result)
+	Expect(err).ToNot(HaveOccurred())
+	return result
+}
+
+// SynchronizedBeforeSuite runs its first function only on Ginkgo's primary parallel process, and
+// its second function on every process (the primary included). The Keycloak test users and
+// organizations, test tenants, and hub registration that Tool.Setup creates are cluster-wide state
+// that must only be created once: Keycloak's user-management endpoints return intermittent 500s
+// when multiple processes concurrently create or reset the same user's password, and creating the
+// hub or test tenants more than once would race. So the primary process does that full setup here
+// and broadcasts what every other process needs to connect to it instead (see
+// Tool.SetupFollower).
+var _ = SynchronizedBeforeSuite(func() []byte {
+	ctx := context.Background()
+	logger = newLogger()
+	config = loadConfig()
+	logger.Info("Configuration", slog.String("!secret", config.Secret))
+
+	var err error
 	tool, err = NewTool().
 		SetLogger(logger).
 		SetSecret(config.Secret).
@@ -89,15 +108,54 @@ var _ = BeforeSuite(func() {
 	Expect(err).ToNot(HaveOccurred())
 	err = tool.Setup(ctx)
 	Expect(err).ToNot(HaveOccurred())
+
+	createSharedFixtures(ctx)
+
+	result, err := json.Marshal(primarySetupResult{
+		Secret:       tool.Secret(),
+		HubID:        hubId,
+		HubNamespace: hubNamespace,
+	})
+	Expect(err).ToNot(HaveOccurred())
+	return result
+}, func(encoded []byte) {
+	if tool == nil {
+		// A parallel Ginkgo process other than the primary: the primary process above already
+		// created the shared Keycloak users/organizations, test tenants, and hub registration, so
+		// just connect using that already-ready state instead of racing to recreate it.
+		ctx := context.Background()
+		logger = newLogger()
+		config = loadConfig()
+
+		var shared primarySetupResult
+		err := json.Unmarshal(encoded, &shared)
+		Expect(err).ToNot(HaveOccurred())
+		hubId = shared.HubID
+		hubNamespace = shared.HubNamespace
+
+		tool, err = NewTool().
+			SetLogger(logger).
+			SetSecret(shared.Secret).
+			Build()
+		Expect(err).ToNot(HaveOccurred())
+		err = tool.SetupFollower(ctx)
+		Expect(err).ToNot(HaveOccurred())
+	}
+
 	DeferCleanup(func() {
-		err := tool.Cleanup(ctx)
+		err := tool.Cleanup(context.Background(), GinkgoParallelProcess() == 1)
 		Expect(err).ToNot(HaveOccurred())
 	})
+})
 
+// createSharedFixtures creates the DiskImage and ClusterVersion fixtures used by bare-metal
+// cluster tests. Called only from the primary process's half of SynchronizedBeforeSuite, since
+// these are cluster-wide fixtures shared by every spec.
+func createSharedFixtures(ctx context.Context) {
 	// The system default is used by bare-metal cluster tests, so it must reference a
 	// DiskImage. Leave both fixtures in place to support reruns against a live cluster.
 	imageClient := privatev1.NewDiskImagesClient(tool.InternalView().AdminConn())
-	_, err = imageClient.Create(ctx, privatev1.DiskImagesCreateRequest_builder{
+	_, err := imageClient.Create(ctx, privatev1.DiskImagesCreateRequest_builder{
 		Object: privatev1.DiskImage_builder{
 			Metadata: privatev1.Metadata_builder{Name: "it-default-cluster-image", Tenant: "shared"}.Build(),
 			Spec: privatev1.DiskImageSpec_builder{
@@ -151,4 +209,4 @@ var _ = BeforeSuite(func() {
 			Expect(err).NotTo(HaveOccurred())
 		}
 	}
-})
+}
