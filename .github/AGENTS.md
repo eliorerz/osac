@@ -84,7 +84,11 @@ are independent of suite selection.
 Nightly builds use provisional `sha-*` image tags while all build, unit,
 integration, security, and E2E gates run. Promote images to release-looking
 nightly tags only after every required gate passes; failed runs must not publish
-release-looking tags.
+release-looking tags. A manual `workflow_dispatch` run may opt out of the
+integration or E2E gate individually via `skip_integration`/`skip_e2e`
+(each surfaced in the tag message and the Slack success notification);
+the scheduled nightly cron never sets either, and unit/security tests are
+never skippable.
 
 A real, permanent `<component>/vX.Y.Z` tag (release mode's `component_versions`
 bump) must be pushed with real actor credentials, not the default

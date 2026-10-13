@@ -53,6 +53,13 @@ on:
         type: boolean
         default: false
         required: false
+      skip_integration:
+        description: >-
+          Skip integration tests and publish anyway if unit/security (and,
+          unless also skipped, e2e) tests pass.
+        type: boolean
+        default: false
+        required: false
     secrets:
       OSAC_CI_APP_PRIVATE_KEY:
         description: >-
@@ -766,6 +773,13 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+    # Skippable via the skip_integration input, same shape as skip_e2e
+    # above but independent of it: both callers pass this through from
+    # their own workflow_dispatch input; the nightly scheduled trigger
+    # never sets it, so the cron can never skip integration tests.
+    # promote-and-publish below tolerates this being skipped as well as
+    # succeeded.
+    if: inputs.skip_integration != true
     uses: ./.github/workflows/integration-tests.yml
 
   security-tests:
@@ -790,8 +804,10 @@ jobs:
   # Skippable via the skip_e2e input -- both callers pass this through
   # from their own workflow_dispatch input; the nightly scheduled trigger
   # never sets it, so the cron can never skip e2e. promote-and-publish/
-  # publish-umbrella below tolerate these being skipped as well as succeeded; unit/integration/
-  # security tests are NOT skippable by this input.
+  # publish-umbrella below tolerate these being skipped as well as succeeded.
+  # Integration tests have their own, independent skip_integration input
+  # (see that job below); unit/security tests are NOT skippable by either
+  # input.
   # -------------------------------------------------------------------
   e2e-vmaas-test:
     name: E2E validation (vmaas)
@@ -888,9 +904,9 @@ jobs:
   #
   # `if:` (not just `needs:`) because a skipped job is not a `success()`
   # by GitHub's default job-gating -- explicitly tolerating skipped
-  # alongside success only for the three e2e jobs (which can only be
-  # skipped via the skip_e2e input) keeps unit/integration/security
-  # tests hard-required in every case, on both modes.
+  # alongside success for the three e2e jobs (skip_e2e) and integration-
+  # tests (skip_integration) keeps unit/security tests hard-required in
+  # every case, on both modes.
   # -------------------------------------------------------------------
   promote-and-publish:
     name: Promote and publish (${{ matrix.component }})
@@ -900,7 +916,7 @@ jobs:
       needs.prepare.result == 'success' &&
       needs.build.result == 'success' &&
       needs.unit-tests.result == 'success' &&
-      needs.integration-tests.result == 'success' &&
+      contains(fromJSON('["success", "skipped"]'), needs.integration-tests.result) &&
       needs.security-tests.result == 'success' &&
       contains(fromJSON('["success", "skipped"]'), needs.e2e-vmaas-test.result) &&
       contains(fromJSON('["success", "skipped"]'), needs.e2e-caas-test.result) &&
@@ -1425,6 +1441,7 @@ jobs:
     - name: Create umbrella tag
       env:
         SKIP_E2E: ${{ inputs.skip_e2e }}
+        SKIP_INTEGRATION: ${{ inputs.skip_integration }}
       run: |
         set -euo pipefail
         source osac-installer/scripts/nightly-charts.sh
@@ -1438,6 +1455,7 @@ jobs:
         # jobs' own `if:` guards) -- keep this visible in the tag's own
         # history, not just the transient Slack message below.
         [[ "${SKIP_E2E}" == "true" ]] && TAG_MESSAGE="${TAG_MESSAGE} (e2e skipped: manual workflow_dispatch run)"
+        [[ "${SKIP_INTEGRATION}" == "true" ]] && TAG_MESSAGE="${TAG_MESSAGE} (integration tests skipped: manual workflow_dispatch run)"
 
         if git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}" 2>/dev/null; then
           EXISTING_SHA=$(git rev-parse "${TAG}^{commit}")
@@ -1694,6 +1712,7 @@ jobs:
         REPO_OWNER: ${{ github.repository_owner }}
         GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         SKIP_E2E: ${{ inputs.skip_e2e }}
+        SKIP_INTEGRATION: ${{ inputs.skip_integration }}
       run: |
         set -euo pipefail
         source osac-installer/scripts/nightly-charts.sh
@@ -1706,13 +1725,19 @@ jobs:
         RUN_KIND="Nightly Build"
         [[ "${MODE}" == "release" ]] && RUN_KIND="Release"
 
-        # Only ever true on a manual workflow_dispatch run (see the e2e
-        # jobs' own `if:` guards) -- never silent: a release that skipped
-        # e2e must be obvious in the same place every other success is
-        # announced, not just in the tag message/run log.
+        # Only ever true on a manual workflow_dispatch run (see the e2e/
+        # integration-tests jobs' own `if:` guards) -- never silent: a
+        # release that skipped either must be obvious in the same place
+        # every other success is announced, not just in the tag
+        # message/run log.
+        declare -a SKIPPED=()
+        [[ "${SKIP_E2E}" == "true" ]] && SKIPPED+=("e2e")
+        [[ "${SKIP_INTEGRATION}" == "true" ]] && SKIPPED+=("integration")
+
         HEADER_TEXT=":white_check_mark: ${RUN_KIND} ${VERSION} - Published"
-        if [[ "${SKIP_E2E}" == "true" ]]; then
-          HEADER_TEXT=":warning: ${RUN_KIND} ${VERSION} - Published (e2e SKIPPED)"
+        if [[ "${#SKIPPED[@]}" -gt 0 ]]; then
+          SKIPPED_LIST=$(IFS=', '; echo "${SKIPPED[*]}")
+          HEADER_TEXT=":warning: ${RUN_KIND} ${VERSION} - Published (${SKIPPED_LIST} SKIPPED)"
         fi
 
         jq -n \

@@ -15,6 +15,15 @@ on:
         type: boolean
         default: false
         required: false
+      skip_integration:
+        description: >-
+          Skip integration tests and publish anyway if unit/security (and,
+          unless also skipped, e2e) tests pass. Manual runs only -- this
+          input does not exist on the scheduled trigger, so the nightly
+          cron can never skip integration tests.
+        type: boolean
+        default: false
+        required: false
 
 concurrency:
   group: nightly-build
@@ -53,3 +62,4 @@ jobs:
     with:
       mode: nightly
       skip_e2e: ${{ github.event.inputs.skip_e2e == 'true' }}
+      skip_integration: ${{ github.event.inputs.skip_integration == 'true' }}
