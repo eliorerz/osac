@@ -7,6 +7,9 @@
 # checked, so a later push drops it (the repository dismisses stale approvals) and the next run looks again. A repeated
 # run does not stack approvals.
 #
+# For a Konflux pull request it also makes the title and the label the `jira-reference` check needs, and approves its held
+# workflow runs (this was konflux-auto-label.yml).
+#
 # It runs on a schedule, not on the pull request event. A run started by a pull request that Dependabot opened gets only
 # Dependabot's secrets, so the app's key would have to be given to Dependabot as well; a scheduled run is not started by
 # Dependabot and uses the organization's normal secret, so the key stays out of the Dependabot context. The price is a
@@ -79,6 +82,48 @@ jobs:
       contents: read  # the action is fetched from osac-ci by the runner; nothing of this repository is checked out
       pull-requests: read  # read the pull request, its commits, files and reviews; the approval uses the app's token
     steps:
+      # Konflux (an external app) opens pull requests whose title has no Jira key and that Prow gives no
+      # jira/valid-reference label (the `jira-reference` check reads it), and its workflow runs can wait in GitHub's
+      # first-time-contributor gate. So a Konflux pull request gets NO-ISSUE: in its title, then the label, and its held runs
+      # are approved. This was konflux-auto-label.yml, a pull_request_target workflow that put a skipped row on every pull
+      # request. The merge queue token makes the edits: an edit by the workflow's own token starts no workflow, and
+      # `jira-reference` has to run again.
+      - name: Make a Konflux pull request ready
+        env:
+          GH_TOKEN: ${{ secrets.MERGE_QUEUE_TOKEN }}
+          REPO: ${{ github.repository }}
+          NUMBER: ${{ matrix.number }}
+        run: |
+          set -euo pipefail
+          pull=$(gh api "repos/${REPO}/pulls/${NUMBER}")
+          if [[ "$(jq -r '.user.login' <<<"${pull}")" != "red-hat-konflux-kflux-prd-rh02[bot]" ]]; then
+            echo "PR #${NUMBER} is not a Konflux pull request; nothing to do"
+            exit 0
+          fi
+          title=$(jq -r '.title' <<<"${pull}")
+          if [[ ! "${title}" =~ ^(NO-ISSUE|[A-Z][A-Z0-9]*-[0-9]+): ]]; then
+            echo "Prefixing the title: NO-ISSUE: ${title}"
+            gh pr edit "${NUMBER}" --repo "${REPO}" --title "NO-ISSUE: ${title}"
+          fi
+          if [[ "$(jq -r '[.labels[].name] | index("jira/valid-reference") != null' <<<"${pull}")" != "true" ]]; then
+            echo "Adding the label jira/valid-reference"
+            gh pr edit "${NUMBER}" --repo "${REPO}" --add-label jira/valid-reference
+          fi
+          head_sha=$(jq -r '.head.sha' <<<"${pull}")
+          # A real listing failure must not look like "no held runs".
+          pending=$(gh api "repos/${REPO}/actions/runs?head_sha=${head_sha}&status=action_required" --jq '.workflow_runs[].id')
+          approved=0
+          failed=0
+          for run_id in ${pending}; do
+            if gh api "repos/${REPO}/actions/runs/${run_id}/approve" --method POST --silent; then
+              approved=$((approved + 1))
+            else
+              failed=$((failed + 1))
+              echo "::error::Failed to approve run ${run_id} for ${head_sha:0:7}"
+            fi
+          done
+          echo "Approved ${approved} held run(s) for ${head_sha:0:7}."
+          [[ "${failed}" -eq 0 ]]
       # The approval is made by the OSAC CI app (osac-ci[bot]), with a token that has the pull-request permission only and
       # lasts an hour. The app is the organization's; its key is an organization secret.
       - name: Token of the OSAC CI app, for the approval only
