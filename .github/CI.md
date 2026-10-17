@@ -16,6 +16,15 @@ auto-merge (`e2e-pr.yml`, job `Auto-merge`). To keep one pull request from mergi
 convert it to a draft. The queue runs `CI` and
 `E2E` again on the result of merging, so what lands is what was tested.
 
+## Approvals after a rebase, and pull requests from forks
+
+- A clean rebase, or "Update branch", keeps the approval and moves it to the new head. A rebase that needs conflict
+  resolution drops it, even when the diff is the same, so the pull request needs a new approval.
+- For a pull request from a fork, only a person with write access starts the `E2E`: the approval of CodeRabbit or of the
+  OSAC CI bot does not count, because the `E2E` runs the fork's code with the repository's secrets.
+- For a pull request from someone outside the organization, a person with triage access or above also adds the
+  `ok-to-test` label (before approving, or re-run the failed `E2E` job after), or the suites refuse the fork.
+
 ## Which tests a directory needs
 
 A change under a directory runs the parts below, and a part that applies has to pass before `CI` does: there is no way
