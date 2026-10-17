@@ -111,7 +111,8 @@ jobs:
           fi
           head_sha=$(jq -r '.head.sha' <<<"${pull}")
           # A real listing failure must not look like "no held runs".
-          pending=$(gh api "repos/${REPO}/actions/runs?head_sha=${head_sha}&status=action_required" --jq '.workflow_runs[].id')
+          pending=$(gh api --paginate "repos/${REPO}/actions/runs?head_sha=${head_sha}&status=action_required&per_page=100" \
+            --jq '.workflow_runs[].id')
           approved=0
           failed=0
           for run_id in ${pending}; do
