@@ -97,7 +97,7 @@ spec:
         - name: PGSSLROOTCERT
           value: /certs/ca.crt
         - name: PGHOST
-          value: {{ .Values.dbInit.host | default "postgres.osac-infra.svc.cluster.local" }}
+          value: {{ include "osac.dbInit.host" . }}
         - name: PGPORT
           value: "5432"
         - name: PGUSER
