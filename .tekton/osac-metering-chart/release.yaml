@@ -280,7 +280,16 @@ spec:
           - $(params.SOURCE_ARTIFACT)=/var/workdir/source
         - name: patch-values
           # Same image build-helm-chart-oci-ta's own "package-and-push" step
-          # uses -- already has git and yq.
+          # uses -- already has git and yq. Runs as root: use-trusted-artifact
+          # (the preceding step) extracts the source tree as build-trusted-
+          # artifacts' own non-root user, a different uid than this image's
+          # default (1001) -- the extracted files' plain git-clone modes
+          # (644/755) grant no cross-uid write, so `yq -i` on values.yaml
+          # fails "permission denied" otherwise. Confirmed live on a real
+          # release. Same cross-image uid mismatch already solved once
+          # before for generate-ee-context (see its own securityContext).
+          securityContext:
+            runAsUser: 0
           image: quay.io/konflux-ci/tools@sha256:2112b51ba80d1041c120c32b67b871d371fde4e5775b32a3c7bf01a2f9ec0964
           script: |
             #!/bin/bash
