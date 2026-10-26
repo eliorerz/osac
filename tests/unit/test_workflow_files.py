@@ -16,15 +16,65 @@ POLICY = yaml.safe_load((ROOT / ".github" / "e2e-policy.yml").read_text(encoding
 DISPATCHED = {job["suite"]: job["workflow"] for job in POLICY.values() if job.get("workflow")}
 
 
+def _rejecting_duplicate_keys(base: type[yaml.Loader] | type[yaml.SafeLoader] | type[yaml.BaseLoader]) -> type:
+    """``base`` that raises on a mapping with the same key twice (PyYAML keeps the last one without a word, and GitHub
+    refuses the file), so the test does not depend on the yamllint hook for it."""
+
+    class Strict(base):  # type: ignore[valid-type, misc]
+        def construct_mapping(self, node: yaml.MappingNode, deep: bool = False) -> dict:
+            seen: set[object] = set()
+            for key_node, _ in node.value:
+                key = self.construct_object(key_node, deep=True)
+                if key in seen:
+                    raise yaml.constructor.ConstructorError(None, None, f"duplicate key {key!r}", key_node.start_mark)
+                seen.add(key)
+            return super().construct_mapping(node, deep)  # type: ignore[no-any-return]
+
+    return Strict
+
+
+StrictSafeLoader = _rejecting_duplicate_keys(yaml.SafeLoader)
+StrictBaseLoader = _rejecting_duplicate_keys(
+    yaml.BaseLoader
+)  # keeps `on` as the string "on" (SafeLoader reads it as True)
+
+
 def load(path: Path) -> dict:
-    return yaml.safe_load(path.read_text(encoding="utf-8"))
+    return yaml.load(path.read_text(encoding="utf-8"), Loader=StrictSafeLoader)
+
+
+def problems(text: str) -> list[str]:
+    """What is wrong with a workflow file as a whole: not one document, a duplicate key, no `on` or no `jobs`."""
+    try:
+        documents = list(yaml.load_all(text, Loader=StrictBaseLoader))
+    except yaml.YAMLError as exc:
+        return [f"cannot be read: {exc}"]
+    if len(documents) != 1:
+        return [f"holds {len(documents)} YAML documents (a stray line before `---`?)"]
+    top = documents[0]
+    if not isinstance(top, dict):
+        return ["is not a mapping"]
+    return [f"has no top-level `{key}`" for key in ("on", "jobs") if key not in top]
 
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.name)
 def test_a_workflow_file_is_one_document_with_triggers_and_jobs(path: Path) -> None:
-    documents = list(yaml.safe_load_all(path.read_text(encoding="utf-8")))
-    assert len(documents) == 1, f"{path.name} holds {len(documents)} YAML documents (a stray line before `---`?)"
-    assert isinstance(documents[0], dict) and True in documents[0] and "jobs" in documents[0]  # `on` loads as True
+    assert problems(path.read_text(encoding="utf-8")) == []
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("id: stray\n---\non: push\njobs: {}\n", "holds 2 YAML documents"),
+        ("on: push\njobs: {}\njobs: {}\n", "duplicate key 'jobs'"),
+        ("on: push\njobs:\n  a: {}\n  a: {}\n", "duplicate key 'a'"),
+        ("true: push\njobs: {}\n", "has no top-level `on`"),
+        ("on: push\n", "has no top-level `jobs`"),
+    ],
+)
+def test_the_check_catches_what_github_refuses(text: str, expected: str) -> None:
+    (found,) = problems(text)
+    assert expected in found
 
 
 @pytest.mark.parametrize(("suite", "file"), sorted(DISPATCHED.items()))
