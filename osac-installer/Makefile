@@ -172,7 +172,9 @@ OSAC_CHART     := $(CHARTS)/osac
 # ref already pinned by content digest (OSAC_CHART_OCI_REF containing
 # @sha256:...), leave OSAC_CHART_OCI_VERSION unset instead -- Helm parses
 # --version as a semver constraint unconditionally, so it can never carry a
-# digest or any other non-semver string.
+# digest or any other non-semver string. Installing a @sha256:-pinned ref
+# requires Helm 3.17+ (the release that added OCI install-by-digest); see
+# docs/guides/installation/helm-deployment-guide.md's Phase 2 section.
 OSAC_CHART_OCI_REF ?=
 OSAC_CHART_OCI_VERSION ?=
 # Runtime supplies hostnames and credentials; use the minimal CI fixture for
@@ -233,6 +235,9 @@ KIND_RUNTIME_REQUIRED := $(if $(filter true,$(HOST_IS_MAC_ARM)),true,$(if $(filt
 
 # Helm 4 moved post-renderers into plugins; Helm 3 still accepts an executable path.
 HELM_MAJOR := $(shell version=$$(helm version --short 2>/dev/null) || exit; printf '%s\n' "$$version" | sed -nE 's/^v([0-9]+).*/\1/p')
+# Only meaningful to compare when HELM_MAJOR is 3 -- Helm 4 always postdates
+# 3.17, the release that added OCI chart install by @sha256: digest.
+HELM_MINOR := $(shell version=$$(helm version --short 2>/dev/null) || exit; printf '%s\n' "$$version" | sed -nE 's/^v[0-9]+\.([0-9]+).*/\1/p')
 DEVSTACK_HELM_APPLY_ARGS :=
 ifeq ($(HELM_MAJOR),4)
 DEV_FULL_HELM_POST_RENDERER := osac-dev-full-awx-image
@@ -474,7 +479,13 @@ ifdef OSAC_CHART_OCI_REF
 	# OSAC_CHART_OCI_VERSION must stay unset in that case instead of being
 	# required.
 	@case "$(OSAC_CHART_OCI_REF)" in \
-		*@sha256:*) [ -z "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION must not be set when OSAC_CHART_OCI_REF already pins a @sha256: digest" >&2; exit 1; } ;; \
+		*@sha256:*) \
+			[ -z "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION must not be set when OSAC_CHART_OCI_REF already pins a @sha256: digest" >&2; exit 1; }; \
+			case "$(HELM_MAJOR)" in \
+				4) ;; \
+				3) [ -n "$(HELM_MINOR)" ] && [ "$(HELM_MINOR)" -ge 17 ] || { echo "ERROR: installing an OCI chart pinned by @sha256: digest requires Helm 3.17 or later (detected $$(helm version --short 2>/dev/null)); see docs/guides/installation/helm-deployment-guide.md" >&2; exit 1; } ;; \
+				*) echo "ERROR: could not detect a supported Helm version; installing an OCI chart pinned by @sha256: digest requires Helm 3.17 or later" >&2; exit 1 ;; \
+			esac ;; \
 		*) [ -n "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION is required when OSAC_CHART_OCI_REF is set without an @sha256: digest" >&2; exit 1; } ;; \
 	esac
 else
@@ -599,7 +610,7 @@ else
 		--set keycloak.route.hostname=keycloak-keycloak.$(DRY_RUN_CLUSTER_DOMAIN) \
 		--set "bundledVault.keycloakIssuerUrl=https://keycloak-keycloak.$(DRY_RUN_CLUSTER_DOMAIN)/realms/osac"
 endif
-	helm template osac $(OSAC_CHART) \
+	helm template osac $(if $(OSAC_CHART_OCI_REF),$(OSAC_CHART_OCI_REF)$(if $(OSAC_CHART_OCI_VERSION), --version $(OSAC_CHART_OCI_VERSION)),$(OSAC_CHART)) \
 		-f $(INSTANCE_VALUES) $(INSTANCE_VALUES_EXTRA) \
 		--namespace $(NS) \
 		--set-string global.osacDeploymentId=$(NS)/osac \
