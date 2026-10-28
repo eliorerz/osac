@@ -470,8 +470,9 @@ endif
 ##@ Entity: Osac
 
 AAP_LICENSE_FILE ?= values/$(PROFILE)/license.zip
-.PHONY: install-osac
-install-osac: ## Install OSAC instance (PLATFORM= PROFILE= NS= required)
+
+.PHONY: validate-osac-chart-oci-ref
+validate-osac-chart-oci-ref: ## Validate OSAC_CHART_OCI_REF/OSAC_CHART_OCI_VERSION and the Helm version they require
 ifdef OSAC_CHART_OCI_REF
 	# A ref pinned by content digest (@sha256:...) already names an exact
 	# artifact; Helm rejects --version there too (it's always parsed as a
@@ -490,6 +491,11 @@ ifdef OSAC_CHART_OCI_REF
 	esac
 else
 	@[ -z "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION is set without OSAC_CHART_OCI_REF -- this would silently install the local checkout's chart, ignoring the version" >&2; exit 1; }
+endif
+
+.PHONY: install-osac
+install-osac: validate-osac-chart-oci-ref ## Install OSAC instance (PLATFORM= PROFILE= NS= required)
+ifndef OSAC_CHART_OCI_REF
 	rm -rf $(OSAC_CHART)/charts
 	helm --repository-config $(LOCAL_HELM_REPOSITORY_CONFIG) dependency build $(OSAC_CHART)
 endif
@@ -580,7 +586,7 @@ install: install-infra install-osac ## Full install: infra + osac (PLATFORM= PRO
 endif
 
 .PHONY: install-dry-run
-install-dry-run: helm-deps ## Render every release in make install without connecting to a cluster
+install-dry-run: helm-deps validate-osac-chart-oci-ref ## Render every release in make install without connecting to a cluster
 ifeq ($(PLATFORM),kind)
 	helm template cert-manager oci://quay.io/jetstack/charts/cert-manager \
 		--version v1.20.0 --namespace cert-manager \
