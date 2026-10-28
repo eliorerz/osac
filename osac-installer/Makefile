@@ -168,6 +168,11 @@ OSAC_CHART     := $(CHARTS)/osac
 # oci://registry.stage.redhat.io/cloud-extensions/osac-chart) instead of
 # building the chart from this checkout -- for validating a real staged
 # release rather than the current commit. Leave unset for normal use.
+# OSAC_CHART_OCI_VERSION is a semver tag, passed to Helm as --version; for a
+# ref already pinned by content digest (OSAC_CHART_OCI_REF containing
+# @sha256:...), leave OSAC_CHART_OCI_VERSION unset instead -- Helm parses
+# --version as a semver constraint unconditionally, so it can never carry a
+# digest or any other non-semver string.
 OSAC_CHART_OCI_REF ?=
 OSAC_CHART_OCI_VERSION ?=
 # Runtime supplies hostnames and credentials; use the minimal CI fixture for
@@ -463,7 +468,15 @@ AAP_LICENSE_FILE ?= values/$(PROFILE)/license.zip
 .PHONY: install-osac
 install-osac: ## Install OSAC instance (PLATFORM= PROFILE= NS= required)
 ifdef OSAC_CHART_OCI_REF
-	@[ -n "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION is required when OSAC_CHART_OCI_REF is set" >&2; exit 1; }
+	# A ref pinned by content digest (@sha256:...) already names an exact
+	# artifact; Helm rejects --version there too (it's always parsed as a
+	# semver constraint, and a digest string is never one), so
+	# OSAC_CHART_OCI_VERSION must stay unset in that case instead of being
+	# required.
+	@case "$(OSAC_CHART_OCI_REF)" in \
+		*@sha256:*) [ -z "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION must not be set when OSAC_CHART_OCI_REF already pins a @sha256: digest" >&2; exit 1; } ;; \
+		*) [ -n "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION is required when OSAC_CHART_OCI_REF is set without an @sha256: digest" >&2; exit 1; } ;; \
+	esac
 else
 	@[ -z "$(OSAC_CHART_OCI_VERSION)" ] || { echo "ERROR: OSAC_CHART_OCI_VERSION is set without OSAC_CHART_OCI_REF -- this would silently install the local checkout's chart, ignoring the version" >&2; exit 1; }
 	rm -rf $(OSAC_CHART)/charts
@@ -504,7 +517,7 @@ endif
 			--set-string "aap.configAsCode.remoteClusterKubeconfigSecretKey=$${REMOTE_KUBECONFIG_SECRET_KEY}" \
 		); \
 	fi; \
-	helm upgrade --install osac $(if $(OSAC_CHART_OCI_REF),$(OSAC_CHART_OCI_REF) --version $(OSAC_CHART_OCI_VERSION),$(OSAC_CHART)) \
+	helm upgrade --install osac $(if $(OSAC_CHART_OCI_REF),$(OSAC_CHART_OCI_REF)$(if $(OSAC_CHART_OCI_VERSION), --version $(OSAC_CHART_OCI_VERSION)),$(OSAC_CHART)) \
 		-f $(INSTANCE_VALUES) $(INSTANCE_VALUES_EXTRA) \
 		--namespace $(NS) --create-namespace \
 		--set-string global.osacDeploymentId=$(NS)/osac \
