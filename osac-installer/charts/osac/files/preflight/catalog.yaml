@@ -110,6 +110,22 @@
   remediation: "Create the ca-bundle ConfigMap in the release namespace (trust-manager distributes it) or point service.certs.caBundle.configMap at yours."
   docsURL: "https://github.com/osac-project/osac/blob/main/docs/guides/installation/customer-install-guide.md#43-installing-osac"
 
+- id: operator-ingress-ca
+  kind: configmap-keys
+  severity: required
+  category: cluster
+  requiredFor: [core]
+  when: operator.ignition.trustIngressCA
+  platforms: [openshift]
+  title: "The OpenShift ingress CA bundle that the operator trusts exists"
+  params:
+    configmaps:
+      - name: default-ingress-cert
+        namespace: openshift-config-managed
+        keys: [ca-bundle.crt]
+  remediation: "The operator reads this OpenShift-managed ConfigMap when it starts and exits without it. Use an OpenShift cluster that publishes it, or set operator.ignition.trustIngressCA=false."
+  docsURL: "https://github.com/osac-project/osac/blob/main/docs/guides/installation/customer-install-guide.md#111-the-install-preflight-stops-the-installation"
+
 - id: db-secrets
   kind: secret-keys
   severity: required
