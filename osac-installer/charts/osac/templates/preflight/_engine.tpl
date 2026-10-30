@@ -417,9 +417,10 @@ OSAC-PREFLIGHT-JSON v1: {{ $r | toJson | replace $r.generatedAt (replace ":" "\\
 {{- end -}}
 
 {{/*
-nodes-schedulable: at least one node is Ready, not cordoned, and free of the
-taints that keep ordinary pods off (node.kubernetes.io/*, control-plane).
-Custom taints are ignored: pod tolerations are not known here.
+nodes-schedulable: at least one node is Ready, not cordoned, and has no
+NoSchedule or NoExecute taint. The chart sets no nodeSelector and no
+tolerations on any workload, so a node with such a taint, custom or not, cannot
+run its pods. PreferNoSchedule does not keep pods off.
 */}}
 {{- define "osac.preflight.kind.nodes-schedulable" -}}
 {{- $nodes := (lookup "v1" "Node" "" "").items | default list -}}
@@ -434,7 +435,7 @@ Custom taints are ignored: pod tolerations are not known here.
   {{- end -}}
   {{- $blockingTaint := false -}}
   {{- range (dig "spec" "taints" (list) $n) -}}
-    {{- if and (has .effect (list "NoSchedule" "NoExecute")) (or (hasPrefix "node.kubernetes.io/" .key) (has .key (list "node-role.kubernetes.io/master" "node-role.kubernetes.io/control-plane"))) -}}
+    {{- if has .effect (list "NoSchedule" "NoExecute") -}}
       {{- $blockingTaint = true -}}
     {{- end -}}
   {{- end -}}

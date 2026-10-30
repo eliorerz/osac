@@ -1564,7 +1564,7 @@ the preflight runs before Helm creates a namespace, so with only
 |---|---|---|
 | `install-namespace-active` | The release namespace exists and is not terminating. | Always |
 | `ocp-version` | The OpenShift version is 4.22 or later (warning only). | OpenShift |
-| `nodes-schedulable` | At least one node is Ready, not cordoned, and not tainted against ordinary pods. | Always; a warning on upgrade |
+| `nodes-schedulable` | At least one node is Ready, not cordoned, and has no `NoSchedule` or `NoExecute` taint. The chart sets no tolerations, so a tainted node cannot run its pods. | Always; a warning on upgrade |
 | `default-storageclass` | A default storage class exists. | Always; required on a new installation with the AAP instance or CaaS, otherwise a warning |
 | `cert-manager-crds` | The `certificates.cert-manager.io` CRD exists. | Always |
 | `cert-issuer-ready` | The issuer in `service.certs.issuerRef` exists and is `Ready`. | Always; a warning on upgrade |

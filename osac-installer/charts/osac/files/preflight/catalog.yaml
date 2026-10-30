@@ -55,7 +55,7 @@
   category: hardware
   requiredFor: [core]
   title: "At least one node can run new pods"
-  remediation: "Uncordon a node (oc adm uncordon <node>), add a worker, or resolve NotReady and pressure conditions. Pods stay Pending until then."
+  remediation: "Uncordon a node (oc adm uncordon <node>), add a worker, remove its NoSchedule or NoExecute taints (the chart sets no tolerations), or resolve NotReady and pressure conditions. Pods stay Pending until then."
   docsURL: "https://github.com/osac-project/osac/blob/main/docs/guides/installation/customer-install-guide.md#21-cluster-and-access"
 
 - id: default-storageclass

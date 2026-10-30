@@ -33,6 +33,9 @@ x-fixtures:
   node_ok: &node_ok {kind: Node, apiVersion: v1, metadata: {name: n1}, status: {conditions: [{type: Ready, status: "True"}]}}
   node_notready: &node_notready {kind: Node, apiVersion: v1, metadata: {name: n1}, status: {conditions: [{type: Ready, status: "False"}]}}
   node_cordoned: &node_cordoned {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {unschedulable: true}, status: {conditions: [{type: Ready, status: "True"}]}}
+  node_custom_taint: &node_custom_taint {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {taints: [{key: dedicated, value: gpu, effect: NoSchedule}]}, status: {conditions: [{type: Ready, status: "True"}]}}
+  node_prefer_taint: &node_prefer_taint {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {taints: [{key: dedicated, value: gpu, effect: PreferNoSchedule}]}, status: {conditions: [{type: Ready, status: "True"}]}}
+  node_second: &node_second {kind: Node, apiVersion: v1, metadata: {name: n2}, status: {conditions: [{type: Ready, status: "True"}]}}
   node_tainted: &node_tainted {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {taints: [{key: node-role.kubernetes.io/control-plane, effect: NoSchedule}]}, status: {conditions: [{type: Ready, status: "True"}]}}
   sc_default: &sc_default {kind: StorageClass, apiVersion: storage.k8s.io/v1, metadata: {name: fast, annotations: {storageclass.kubernetes.io/is-default-class: "true"}}}
   sc_plain: &sc_plain {kind: StorageClass, apiVersion: storage.k8s.io/v1, metadata: {name: slow}}
@@ -104,7 +107,7 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'install-namespace-active: Namespace osac is Terminating'
-  - it: "nodes-schedulable: NotReady, cordoned and control-plane-tainted nodes do not count"
+  - it: "nodes-schedulable: a control-plane-tainted node does not count"
     kubernetesProvider:
       scheme: *scheme
       objects: [*ns_kube, *ns_osac, *node_tainted, *sc_default, *crd_certmgr, *crd_kubevirt, *crd_mce, *crd_aap, *cv_ok, *issuer_ok, *cm_cabundle, *kafka_ok, *eps_postgres, *sec_ctrl, *sec_vault, *sec_license]
@@ -118,6 +121,54 @@ tests:
     asserts:
       - failedTemplate:
           errorPattern: 'nodes-schedulable: no node can run new pods \(1 node\(s\): 0 not Ready, 0 cordoned, 1 tainted\)'
+  - it: "nodes-schedulable: a custom NoSchedule taint keeps the chart's pods off, because it sets no tolerations"
+    kubernetesProvider:
+      scheme: *scheme
+      objects: [*ns_kube, *ns_osac, *node_custom_taint, *sc_default, *crd_certmgr, *crd_kubevirt, *crd_mce, *crd_aap, *cv_ok, *issuer_ok, *cm_cabundle, *kafka_ok, *eps_postgres, *sec_ctrl, *sec_vault, *sec_license]
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+        - config.openshift.io/v1/ClusterVersion
+        - cert-manager.io/v1/ClusterIssuer
+        - kafka.strimzi.io/v1/Kafka
+        - metal3.io/v1alpha1/Provisioning
+    asserts:
+      - failedTemplate:
+          errorPattern: 'nodes-schedulable: no node can run new pods \(1 node\(s\): 0 not Ready, 0 cordoned, 1 tainted\)'
+      - failedTemplate:
+          errorPattern: 'remove its NoSchedule or NoExecute taints'
+  - it: "nodes-schedulable: a PreferNoSchedule taint does not keep pods off"
+    kubernetesProvider:
+      scheme: *scheme
+      objects: [*ns_kube, *ns_osac, *node_prefer_taint, *sc_default, *crd_certmgr, *crd_kubevirt, *crd_mce, *crd_aap, *cv_ok, *issuer_ok, *cm_cabundle, *kafka_ok, *eps_postgres, *sec_ctrl, *sec_vault, *sec_license]
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+        - config.openshift.io/v1/ClusterVersion
+        - cert-manager.io/v1/ClusterIssuer
+        - kafka.strimzi.io/v1/Kafka
+        - metal3.io/v1alpha1/Provisioning
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: 'data["render.json"]'
+          pattern: '"id":"nodes-schedulable","message":"1 of 1 node\(s\) can run new pods"'
+  - it: "nodes-schedulable: one free node is enough next to a tainted one"
+    kubernetesProvider:
+      scheme: *scheme
+      objects: [*ns_kube, *ns_osac, *node_custom_taint, *node_second, *sc_default, *crd_certmgr, *crd_kubevirt, *crd_mce, *crd_aap, *cv_ok, *issuer_ok, *cm_cabundle, *kafka_ok, *eps_postgres, *sec_ctrl, *sec_vault, *sec_license]
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+        - config.openshift.io/v1/ClusterVersion
+        - cert-manager.io/v1/ClusterIssuer
+        - kafka.strimzi.io/v1/Kafka
+        - metal3.io/v1alpha1/Provisioning
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: 'data["render.json"]'
+          pattern: '"id":"nodes-schedulable","message":"1 of 2 node\(s\) can run new pods"'
   - it: "nodes-schedulable: a NotReady cluster fails"
     kubernetesProvider:
       scheme: *scheme
