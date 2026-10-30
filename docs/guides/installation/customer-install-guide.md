@@ -94,6 +94,15 @@ once. The following example uses the published stable
 export OSAC_RELEASE_VERSION="0.0.62"
 ```
 
+> **Note**
+>
+> The install preflight described in
+> [Section 11.1](#111-the-install-preflight-stops-the-installation) is in
+> charts built after 30 October 2026: releases after
+> `osac-release/v0.0.63` and recent nightly builds. Earlier releases,
+> including the 0.0.62 example above, run a shell validation hook instead and
+> do not behave as described there.
+
 Use only the chart version, without either tag prefix. For evaluation, set
 `OSAC_RELEASE_VERSION` to an exact nightly version from the workflow above;
 the linked example uses `0.0.58-nightly.20261027.8402b1c.141.1`. Select the
@@ -1556,6 +1565,18 @@ cluster: every cluster check is reported as `unknown` and nothing is blocked.
 Create the namespace before you install ([Section 4.1](#41-preparing-the-cluster)):
 the preflight runs before Helm creates a namespace, so with only
 `--create-namespace` it stops at `install-namespace-active`.
+
+**After upgrading from a release without the preflight.** The earlier
+validation Job, `osac-pre-install-validate`, no longer exists. Helm deletes it
+after a successful run, but a failed one stays. If an earlier attempt left it
+behind, delete it, and the `osac-validate` ServiceAccount and the
+`osac-validate-<namespace>` ClusterRole and ClusterRoleBinding that it used:
+
+```console
+oc delete job osac-pre-install-validate -n <namespace> --ignore-not-found
+oc delete serviceaccount osac-validate -n <namespace> --ignore-not-found
+oc delete clusterrolebinding,clusterrole osac-validate-<namespace> --ignore-not-found
+```
 
 **Checks.** A check that does not apply to your configuration is recorded as
 `skipped` with the reason.
