@@ -82,6 +82,8 @@ commands below use `osac/v`; nightly source tags also use this prefix.
 
 An example nightly chart tag is
 [`osac/v0.0.58-nightly.20261027.8402b1c.141.1`](https://github.com/osac-project/osac/tree/osac/v0.0.58-nightly.20261027.8402b1c.141.1).
+It was built on 27 October 2026, before the install preflight, so it runs the
+old shell validation hook; see the note below.
 Check the [OSAC Nightly Build workflow](https://github.com/osac-project/osac/actions/workflows/nightly-build.yaml)
 for newer builds and use the newest successful run. The chart includes a
 `values.schema.json` file and a `values-example.yaml` file.
@@ -99,9 +101,12 @@ export OSAC_RELEASE_VERSION="0.0.62"
 > The install preflight described in
 > [Section 11.1](#111-the-install-preflight-stops-the-installation) is in
 > charts built after 30 October 2026: releases after
-> `osac-release/v0.0.63` and recent nightly builds. Earlier releases,
-> including the 0.0.62 example above, run a shell validation hook instead and
-> do not behave as described there.
+> `osac-release/v0.0.63` and nightly builds from after that date. Earlier
+> charts, including the 0.0.62 release and the 27 October nightly in the
+> examples here, run a shell validation hook instead and do not behave as
+> described there. To evaluate the preflight, choose a nightly from the
+> workflow above that was built after 30 October 2026; its chart contains
+> `templates/preflight/_engine.tpl`.
 
 Use only the chart version, without either tag prefix. For evaluation, set
 `OSAC_RELEASE_VERSION` to an exact nightly version from the workflow above;
