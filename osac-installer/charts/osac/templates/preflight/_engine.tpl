@@ -190,6 +190,10 @@ certificate follows the fullname.
   {{- range $path := ($c.whenAny | default list) -}}
     {{- if include "osac.preflight.truthy" (dict "root" $root "path" $path) -}}{{- $anyOn = true -}}{{- end -}}
   {{- end -}}
+  {{- $firstOff := "" -}}
+  {{- range $path := ($c.whenAll | default list) -}}
+    {{- if and (not $firstOff) (not (include "osac.preflight.truthy" (dict "root" $root "path" $path))) -}}{{- $firstOff = $path -}}{{- end -}}
+  {{- end -}}
   {{- if not $on -}}
     {{- $state = "skipped" -}}
     {{- $msg = printf "%s not enabled" (first $c.requiredFor) -}}
@@ -199,6 +203,9 @@ certificate follows the fullname.
   {{- else if and $c.whenAny (not $anyOn) -}}
     {{- $state = "skipped" -}}
     {{- $msg = printf "none of %s is set" (join ", " $c.whenAny) -}}
+  {{- else if $firstOff -}}
+    {{- $state = "skipped" -}}
+    {{- $msg = printf "%s is not set" $firstOff -}}
   {{- else if and $c.unless (include "osac.preflight.truthy" (dict "root" $root "path" $c.unless)) -}}
     {{- $state = "skipped" -}}
     {{- $msg = printf "%s is set, so this release creates the resource itself" $c.unless -}}

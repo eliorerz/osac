@@ -34,6 +34,7 @@ x-fixtures:
   node_notready: &node_notready {kind: Node, apiVersion: v1, metadata: {name: n1}, status: {conditions: [{type: Ready, status: "False"}]}}
   node_cordoned: &node_cordoned {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {unschedulable: true}, status: {conditions: [{type: Ready, status: "True"}]}}
   node_custom_taint: &node_custom_taint {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {taints: [{key: dedicated, value: gpu, effect: NoSchedule}]}, status: {conditions: [{type: Ready, status: "True"}]}}
+  node_noexecute_taint: &node_noexecute_taint {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {taints: [{key: dedicated, value: gpu, effect: NoExecute}]}, status: {conditions: [{type: Ready, status: "True"}]}}
   node_prefer_taint: &node_prefer_taint {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {taints: [{key: dedicated, value: gpu, effect: PreferNoSchedule}]}, status: {conditions: [{type: Ready, status: "True"}]}}
   node_second: &node_second {kind: Node, apiVersion: v1, metadata: {name: n2}, status: {conditions: [{type: Ready, status: "True"}]}}
   node_tainted: &node_tainted {kind: Node, apiVersion: v1, metadata: {name: n1}, spec: {taints: [{key: node-role.kubernetes.io/control-plane, effect: NoSchedule}]}, status: {conditions: [{type: Ready, status: "True"}]}}
@@ -137,6 +138,20 @@ tests:
           errorPattern: 'nodes-schedulable: no node can run new pods \(1 node\(s\): 0 not Ready, 0 cordoned, 1 tainted\)'
       - failedTemplate:
           errorPattern: 'remove its NoSchedule or NoExecute taints'
+  - it: "nodes-schedulable: a custom NoExecute taint also keeps the chart's pods off"
+    kubernetesProvider:
+      scheme: *scheme
+      objects: [*ns_kube, *ns_osac, *node_noexecute_taint, *sc_default, *crd_certmgr, *crd_kubevirt, *crd_mce, *crd_aap, *cv_ok, *issuer_ok, *cm_cabundle, *kafka_ok, *eps_postgres, *sec_ctrl, *sec_vault, *sec_license]
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+        - config.openshift.io/v1/ClusterVersion
+        - cert-manager.io/v1/ClusterIssuer
+        - kafka.strimzi.io/v1/Kafka
+        - metal3.io/v1alpha1/Provisioning
+    asserts:
+      - failedTemplate:
+          errorPattern: 'nodes-schedulable: no node can run new pods \(1 node\(s\): 0 not Ready, 0 cordoned, 1 tainted\)'
   - it: "nodes-schedulable: a PreferNoSchedule taint does not keep pods off"
     kubernetesProvider:
       scheme: *scheme
@@ -849,6 +864,26 @@ tests:
       - matchRegex:
           path: 'data["render.json"]'
           pattern: '"id":"operator-ingress-ca","message":"operator.ignition.trustIngressCA is not set"'
+  - it: "operator-ingress-ca: skipped when the operator is not deployed, even with the trust setting on"
+    kubernetesProvider:
+      scheme: *scheme
+      objects: [*ns_kube, *ns_osac, *node_ok, *sc_default, *crd_certmgr, *crd_kubevirt, *crd_mce, *crd_aap, *cv_ok, *issuer_ok, *cm_cabundle, *kafka_ok, *eps_postgres, *sec_ctrl, *sec_vault, *sec_license]
+    capabilities:
+      apiVersions:
+        - security.openshift.io/v1
+        - config.openshift.io/v1/ClusterVersion
+        - cert-manager.io/v1/ClusterIssuer
+        - kafka.strimzi.io/v1/Kafka
+        - metal3.io/v1alpha1/Provisioning
+    set:
+      operator.enabled: false
+      operator.networkManagers.enabled: true
+      operator.ignition.trustIngressCA: true
+    asserts:
+      - notFailedTemplate: {}
+      - matchRegex:
+          path: 'data["render.json"]'
+          pattern: '"id":"operator-ingress-ca","message":"operator.enabled is not set"'
   - it: "operator-ingress-ca: skipped on a cluster that is not OpenShift"
     kubernetesProvider:
       scheme: *scheme
