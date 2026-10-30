@@ -636,26 +636,30 @@ and database.
 {{- end -}}
 {{- end -}}
 
-{{/* configmap-keys: ConfigMaps referenced by the values exist. params.configmaps: nameFrom|name, keys, optional. */}}
+{{/*
+configmap-keys: ConfigMaps referenced by the values exist. params.configmaps:
+nameFrom|name, keys, optional, namespace (default: the release namespace).
+*/}}
 {{- define "osac.preflight.kind.configmap-keys" -}}
 {{- $root := .root -}}
-{{- $ns := $root.Release.Namespace -}}
 {{- $problems := list -}}
 {{- $obsList := list -}}
 {{- range $e := (.params.configmaps | default list) -}}
+  {{- $ns := $e.namespace | default $root.Release.Namespace -}}
   {{- $name := $e.name | default "" -}}
   {{- if $e.nameFrom -}}{{- $name = (include "osac.preflight.at" (dict "root" $root "path" $e.nameFrom) | fromJson).v | default "" -}}{{- end -}}
   {{- if $name -}}
+    {{- $shown := ternary (printf "%s/%s" $e.namespace $name) $name (not (empty $e.namespace)) -}}
     {{- $o := lookup "v1" "ConfigMap" $ns $name -}}
     {{- if not $o -}}
-      {{- $problems = append $problems (printf "ConfigMap %s not found" $name) -}}
+      {{- $problems = append $problems (printf "ConfigMap %s not found" $shown) -}}
       {{- $obsList = append $obsList (dict "name" $name "found" false) -}}
     {{- else -}}
       {{- $missing := list -}}
       {{- range $k := ($e.keys | default list) -}}
         {{- if not (hasKey (dig "data" (dict) $o) $k) -}}{{- $missing = append $missing $k -}}{{- end -}}
       {{- end -}}
-      {{- if $missing -}}{{- $problems = append $problems (printf "ConfigMap %s is missing key(s) %s" $name (join ", " $missing)) -}}{{- end -}}
+      {{- if $missing -}}{{- $problems = append $problems (printf "ConfigMap %s is missing key(s) %s" $shown (join ", " $missing)) -}}{{- end -}}
       {{- $obsList = append $obsList (dict "name" $name "found" true "missingKeys" $missing) -}}
     {{- end -}}
   {{- else if not $e.optional -}}

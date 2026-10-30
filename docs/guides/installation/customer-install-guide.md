@@ -1569,6 +1569,7 @@ the preflight runs before Helm creates a namespace, so with only
 | `cert-manager-crds` | The `certificates.cert-manager.io` CRD exists. | Always |
 | `cert-issuer-ready` | The issuer in `service.certs.issuerRef` exists and is `Ready`. | Always; a warning on upgrade |
 | `ca-bundle-present` | The `service.certs.caBundle.configMap` ConfigMap exists in the namespace. | Always |
+| `operator-ingress-ca` | The OpenShift-managed ConfigMap `default-ingress-cert` in `openshift-config-managed` exists and has the key `ca-bundle.crt`. The operator reads it at startup and exits without it. | OpenShift, with `operator.ignition.trustIngressCA=true` |
 | `db-secrets` | Secrets named in `service.database.connection` that the chart does not create exist, have their keys, and carry a valid PostgreSQL URL. | Always |
 | `db-init-host-endpoints` | When `dbInit.host` is an in-cluster Service, it exists and has a ready endpoint. A Service that is only starting is a warning, because the `db-init` hook retries for up to 5 minutes. | In-cluster host |
 | `kafka-access` | The `Kafka` resource is `Ready`, or the Secrets in `service.kafka.connection` exist when `kafka.enabled=false`. | Always; a warning on upgrade |
